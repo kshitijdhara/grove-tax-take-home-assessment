@@ -2,6 +2,7 @@
 .file-uploader {
   width: 100%;
   max-width: 520px;
+  transition: max-width var(--duration-base) var(--ease-out);
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -117,8 +118,34 @@
   color: var(--text-secondary);
 }
 
+/* --- Wide modifier when showing extraction results --- */
+.file-uploader--wide {
+  max-width: 680px;
+}
+
 /* --- Shared success / error layout --- */
-.file-uploader__success,
+.file-uploader__success {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  text-align: left;
+}
+
+.file-uploader__success-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-6) var(--sp-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.file-uploader__success-footer {
+  padding: var(--sp-4) var(--sp-6);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
+}
+
 .file-uploader__error-view {
   padding: var(--sp-8);
   display: flex;
@@ -149,24 +176,6 @@
   font-weight: var(--font-weight-semibold);
   color: var(--text-primary);
   letter-spacing: -0.2px;
-}
-
-/* --- Result JSON --- */
-.file-uploader__result {
-  width: 100%;
-  margin: 0;
-  padding: var(--sp-4);
-  background: var(--surface-1);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-secondary);
-  overflow: auto;
-  max-height: 260px;
-  text-align: left;
-  white-space: pre;
 }
 
 /* --- Error message --- */

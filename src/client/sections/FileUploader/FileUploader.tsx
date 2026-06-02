@@ -1,8 +1,10 @@
 import "./FileUploader.css";
 import { useState, useRef } from "react";
 import type { DragEvent, ChangeEvent } from "react";
+import type { ExtractionResult } from "@/shared/types";
 import { DropZone } from "../../components/DropZone/DropZone";
 import { Button } from "../../components/Button/Button";
+import { ExtractionResultView } from "../../components/ExtractionResult/ExtractionResult";
 import { VscFilePdf } from "react-icons/vsc";
 import { CiCircleCheck } from "react-icons/ci";
 import { MdErrorOutline } from "react-icons/md";
@@ -12,7 +14,7 @@ type UploadStatus = "idle" | "selected" | "uploading" | "success" | "error";
 interface UploaderState {
   status: UploadStatus;
   file: File | null;
-  result: unknown;
+  result: ExtractionResult | null;
   errorMessage: string;
 }
 
@@ -73,8 +75,11 @@ export function FileUploader() {
       const form = new FormData();
       form.append("file", state.file);
       const res = await fetch("/api/extract/pdf", { method: "POST", body: form });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const result = await res.json();
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `Server error ${res.status}`);
+      }
+      const result = await res.json() as ExtractionResult;
       setState((s) => ({ ...s, status: "success", result }));
     } catch (err) {
       setState((s) => ({ ...s, status: "error", errorMessage: String(err) }));
@@ -89,7 +94,7 @@ export function FileUploader() {
   const { status, file, result, errorMessage } = state;
 
   return (
-    <div className="file-uploader">
+    <div className={`file-uploader${status === "success" && result ? " file-uploader--wide" : ""}`}>
       <input
         ref={inputRef}
         type="file"
@@ -136,21 +141,25 @@ export function FileUploader() {
         </div>
       )}
 
-      {status === "success" && (
+      {status === "success" && result && (
         <div className="file-uploader__panel file-uploader__success">
-          <div className="file-uploader__status-icon" aria-hidden="true">
-            <CiCircleCheck size={36} color="#38A169" />
+          <div className="file-uploader__success-header">
+            <div className="file-uploader__status-icon" aria-hidden="true">
+              <CiCircleCheck size={28} color="var(--success)" />
+            </div>
+            <p className="file-uploader__status-title">Extraction complete</p>
           </div>
-          <p className="file-uploader__status-title">Extraction complete</p>
-          <pre className="file-uploader__result">{JSON.stringify(result, null, 2)}</pre>
-          <Button variant="ghost" onClick={handleReset}>Upload another file</Button>
+          <ExtractionResultView result={result} />
+          <div className="file-uploader__success-footer">
+            <Button variant="ghost" onClick={handleReset}>Upload another file</Button>
+          </div>
         </div>
       )}
 
       {status === "error" && (
         <div className="file-uploader__panel file-uploader__error-view">
           <div className="file-uploader__status-icon" aria-hidden="true">
-            <MdErrorOutline size={36} color="#E53E3E" />
+            <MdErrorOutline size={36} color="var(--error)" />
           </div>
           <p className="file-uploader__status-title">Something went wrong</p>
           <p className="file-uploader__error-message">{errorMessage}</p>

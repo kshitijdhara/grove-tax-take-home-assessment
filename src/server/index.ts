@@ -1,7 +1,9 @@
 import { serve } from "bun";
 import index from "../client/index.html";
+import { runExtractionPipeline } from "./extractors/pipeline";
 
 const server = serve({
+  port: 3100,
   routes: {
     // Serve index.html for all unmatched routes.
     "/*": index,
@@ -32,22 +34,19 @@ const server = serve({
       async POST(req) {
         const form = await req.formData();
         const file = form.get("file");
-        return Response.json({
-          filename: file instanceof File ? file.name : "unknown",
-          pages: 4,
-          extracted_fields: {
-            taxpayer_name: "Jane Doe",
-            ssn_last_four: "5678",
-            tax_year: 2024,
-            filing_status: "Single",
-            total_income: 92450.00,
-            adjusted_gross_income: 87320.00,
-            taxable_income: 74820.00,
-            total_tax: 12845.00,
-            federal_tax_withheld: 14200.00,
-            refund_amount: 1355.00,
-          },
-        });
+        if (!(file instanceof File)) {
+          return Response.json({ error: "No file provided" }, { status: 400 });
+        }
+        if (file.type !== "application/pdf") {
+          return Response.json({ error: "Only PDF files are accepted" }, { status: 422 });
+        }
+        try {
+          const result = await runExtractionPipeline(file);
+          return Response.json(result);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : "Extraction failed";
+          return Response.json({ error: message }, { status: 500 });
+        }
       },
     },
   },
