@@ -1,16 +1,14 @@
 import "./Home.css";
-import { LogoHeader } from "../../components/LogoHeader/LogoHeader";
-import { APITester } from "../../sections/APITester/APITester";
+import { FileUploader } from "../../sections/FileUploader/FileUploader";
 
 export function Home() {
   return (
-    <div className="home">
-      <LogoHeader />
-      <h1>Bun + React</h1>
-      <p>
-        Edit <code>src/App.tsx</code> and save to test HMR
-      </p>
-      <APITester />
-    </div>
+    <main className="home">
+      <header className="home__header">
+        <h1 className="home__title">Tax Document Extractor</h1>
+        <p className="home__subtitle">Upload a PDF to extract tax fields automatically</p>
+      </header>
+      <FileUploader />
+    </main>
   );
 }

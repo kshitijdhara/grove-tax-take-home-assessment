@@ -1,14 +1,54 @@
 .button {
-  background: #fbf0df;
-  color: #1a1a1a;
-  border: 0;
-  padding: 0.4rem 1.2rem;
-  border-radius: 8px;
-  font-weight: 700;
-  transition: 0.1s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 0.5rem 1.25rem;
+  min-height: 36px;
+  border: none;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: var(--font-weight-medium);
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
+  text-decoration: none;
+  transition:
+    background-color var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease,
+    opacity var(--duration-fast) ease,
+    transform var(--duration-fast) ease;
 }
-.button:hover {
-  background: #f3d5a3;
-  transform: translateY(-1px);
+
+.button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.button:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+/* Primary — filled accent */
+.button--primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.button--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-accent);
+}
+
+/* Ghost — glass with border */
+.button--ghost {
+  background: var(--surface-1);
+  color: var(--text-accent);
+  border: 1px solid var(--border-default);
+}
+
+.button--ghost:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border-emphasis);
 }

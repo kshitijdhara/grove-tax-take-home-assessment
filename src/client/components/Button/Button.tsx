@@ -1,11 +1,14 @@
 import "./Button.css";
 import type { ButtonHTMLAttributes } from "react";
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {}
+interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "ghost";
+}
 
-export function Button({ children, className, ...props }: ButtonProps) {
+export function Button({ children, className, variant = "ghost", ...props }: ButtonProps) {
+  const cls = ["button", `button--${variant}`, className].filter(Boolean).join(" ");
   return (
-    <button className={`button${className ? ` ${className}` : ""}`} {...props}>
+    <button className={cls} {...props}>
       {children}
     </button>
   );

@@ -27,6 +27,29 @@ const server = serve({
         message: `Hello, ${name}!`,
       });
     },
+
+    "/api/extract/pdf": {
+      async POST(req) {
+        const form = await req.formData();
+        const file = form.get("file");
+        return Response.json({
+          filename: file instanceof File ? file.name : "unknown",
+          pages: 4,
+          extracted_fields: {
+            taxpayer_name: "Jane Doe",
+            ssn_last_four: "5678",
+            tax_year: 2024,
+            filing_status: "Single",
+            total_income: 92450.00,
+            adjusted_gross_income: 87320.00,
+            taxable_income: 74820.00,
+            total_tax: 12845.00,
+            federal_tax_withheld: 14200.00,
+            refund_amount: 1355.00,
+          },
+        });
+      },
+    },
   },
 
   development: process.env.NODE_ENV !== "production" && {
