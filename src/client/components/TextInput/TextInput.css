@@ -1,0 +1,16 @@
+.text-input {
+  width: 100%;
+  flex: 1;
+  background: transparent;
+  border: 0;
+  color: #fbf0df;
+  font: 1em monospace;
+  padding: 0.2rem;
+  outline: 0;
+}
+.text-input:focus {
+  color: #fff;
+}
+.text-input::placeholder {
+  color: rgba(251, 240, 223, 0.4);
+}
