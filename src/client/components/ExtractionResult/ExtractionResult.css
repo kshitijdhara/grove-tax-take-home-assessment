@@ -146,6 +146,22 @@
   text-overflow: ellipsis;
 }
 
+/* Section headers within fields view */
+.er-section-header {
+  padding: var(--sp-2) var(--sp-6);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.er-section-header:not(:first-child) {
+  border-top: 1px solid var(--border-subtle);
+}
+
 /* Field rows */
 .extraction-result__fields {
   display: flex;
@@ -215,15 +231,9 @@
 .extraction-result__footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: var(--sp-3) var(--sp-6);
   border-top: 1px solid var(--border-subtle);
-}
-
-.extraction-result__recipient {
-  font-size: 12px;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
 }
 
 .extraction-badge {
