@@ -7,6 +7,102 @@
   animation: fu-fade-up var(--duration-base) var(--ease-out) both;
 }
 
+/* Header row: doc info + view toggle */
+.extraction-result__header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  gap: var(--sp-4);
+}
+
+/* Move border from doc-header to the row wrapper */
+.extraction-result__header-row .doc-header {
+  border-bottom: none;
+  flex: 1;
+  min-width: 0;
+}
+
+/* View toggle — segmented pill control */
+.extraction-result__view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+  flex-shrink: 0;
+  margin-right: var(--sp-6);
+}
+
+.view-toggle__btn {
+  padding: 4px var(--sp-4);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+  letter-spacing: 0.1px;
+}
+
+.view-toggle__btn:hover {
+  color: var(--text-primary);
+}
+
+.view-toggle__btn--active {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+/* JSON view */
+.extraction-result__json-wrapper {
+  position: relative;
+}
+
+.extraction-result__json {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  overflow-x: auto;
+  white-space: pre;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.copy-json-btn {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-4);
+  padding: 4px var(--sp-3);
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: color var(--duration-fast) ease, background var(--duration-fast) ease;
+  letter-spacing: 0.1px;
+}
+
+.copy-json-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-3);
+}
+
+.copy-json-btn--copied {
+  color: var(--success);
+  background: var(--success-subtle);
+  border-color: transparent;
+}
+
 /* Document header */
 .doc-header {
   display: flex;
