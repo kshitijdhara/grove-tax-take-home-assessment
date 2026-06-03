@@ -3,7 +3,7 @@ import type { DocumentType, ExtractionResult } from "@/shared/types";
 
 type ClaudeExtractedData = Omit<ExtractionResult, "extractionMethod" | "overallConfidence">;
 
-const EXTRACTION_TOOL: Anthropic.Messages.Tool = {
+export const EXTRACTION_TOOL: Anthropic.Messages.Tool = {
   name: "extract_tax_fields",
   description: "Extract all structured fields from a tax document",
   input_schema: {

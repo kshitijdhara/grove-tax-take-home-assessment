@@ -6,9 +6,13 @@ import { extract1099NEC } from "./1099nec";
 import { extract1099INT } from "./1099int";
 import { extract1099DIV } from "./1099div";
 import { claudeFallback } from "./claudeFallback";
+import { claudeVisionExtract } from "./claudeVision";
 import type { RegexExtractionResult } from "./types";
 
 const CONFIDENCE_THRESHOLD = 0.7;
+// Scanned/photographed PDFs produce very little extractable text.
+// Below this threshold we skip regex entirely and go straight to vision.
+const IMAGE_PDF_TEXT_THRESHOLD = 100;
 
 function toExtractionResult(
   r: RegexExtractionResult,
@@ -28,6 +32,18 @@ function toExtractionResult(
 
 export async function runExtractionPipeline(file: File): Promise<ExtractionResult> {
   const rawText = await parsePdf(file);
+
+  // Image-based PDFs (photographed or scanned) have no embedded text layer.
+  // Skip regex entirely and send the raw PDF to Claude Vision instead.
+  const meaningfulChars = rawText.replace(/\s+/g, "").length;
+  if (meaningfulChars < IMAGE_PDF_TEXT_THRESHOLD) {
+    if (!process.env["ANTHROPIC_API_KEY"]) {
+      throw new Error(
+        "This appears to be a scanned or photographed document. AI-powered extraction is required but no API key is configured."
+      );
+    }
+    return claudeVisionExtract(file);
+  }
 
   const docType = identifyDocument(rawText);
   if (!docType) {
