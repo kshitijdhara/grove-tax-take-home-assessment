@@ -1,7 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { DocumentType, ExtractionResult } from "@/shared/types";
+import type { DocumentType } from "@/shared/types";
+import { parseExtractedData, type ExtractedData } from "@/shared/parseExtraction";
+import { verifySourceText } from "./helpers";
 
-type ClaudeExtractedData = Omit<ExtractionResult, "extractionMethod" | "overallConfidence">;
+export interface ClaudeExtractedData extends ExtractedData {}
 
 export const EXTRACTION_TOOL: Anthropic.Messages.Tool = {
   name: "extract_tax_fields",
@@ -70,14 +72,17 @@ export async function claudeFallback(
     ],
   }, { timeout: 30_000 });
 
-  const toolBlock = response.content.find((b) => b.type === "tool_use");
-  if (!toolBlock || toolBlock.type !== "tool_use") {
+  const toolBlock = response.content.find((b): b is Anthropic.Messages.ToolUseBlock => b.type === "tool_use");
+  if (!toolBlock) {
     throw new Error("Claude did not return a structured tool_use block");
   }
 
-  const raw = toolBlock.input as Record<string, unknown>;
-  if (!raw.documentType || !Array.isArray(raw.fields)) {
+  if (typeof toolBlock.input !== "object" || toolBlock.input === null) {
     throw new Error("Claude returned malformed extraction data");
   }
-  return raw as unknown as ClaudeExtractedData;
+
+  const data = parseExtractedData(toolBlock.input);
+  // We have the ground-truth text here, so verify every AI citation against it and redact PII.
+  verifySourceText(rawText, data.fields);
+  return data;
 }

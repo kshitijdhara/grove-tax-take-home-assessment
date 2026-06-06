@@ -1,0 +1,10 @@
+---
+description: TypeScript style — prefer const, exhaustive switches
+globs: "*.ts, *.tsx"
+alwaysApply: false
+---
+
+# TypeScript Style
+
+- Avoid **`let`** when possible; restructure with `const` without hurting readability.
+- When comparing one variable against **three or more** distinct constant values, use a **`switch`** instead of a chain of `if`/`else if`. Be exhaustive and call **`assertNever()`** in the default branch.

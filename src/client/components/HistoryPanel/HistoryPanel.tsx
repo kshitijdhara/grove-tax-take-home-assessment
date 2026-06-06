@@ -1,5 +1,5 @@
 import "./HistoryPanel.css";
-import type { HistoryEntry } from "../../hooks/useExtractionHistory";
+import type { HistoryEntry } from "@/shared/parseExtraction";
 import { ExtractionResultView } from "../ExtractionResult/ExtractionResult";
 import { useState } from "react";
 

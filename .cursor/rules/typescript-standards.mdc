@@ -1,0 +1,15 @@
+---
+description: TypeScript coding standards — types, safety, DRY, no re-exports
+globs: "*.ts, *.tsx"
+alwaysApply: false
+---
+
+# TypeScript Standards
+
+- Prefer **interfaces** over types.
+- Avoid **enums**; use const maps instead.
+- Implement proper type safety and inference.
+- Avoid using **`as`** to typecast variables; use type guards or `satisfies` for validation.
+- Do not use **`unknown`**.
+- Do not **re-export** symbols imported from a different package.
+- Follow **DRY** — extract shared logic instead of duplicating it.

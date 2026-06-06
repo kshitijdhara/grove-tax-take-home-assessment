@@ -1,24 +1,21 @@
 import { useState } from "react";
 import type { ExtractionResult } from "@/shared/types";
+import { parseHistoryEntry, type HistoryEntry } from "@/shared/parseExtraction";
 
 const STORAGE_KEY = "grove_tax_history";
 const MAX_ITEMS = 20;
 
-export interface HistoryEntry {
-  id: string;
-  timestamp: number;
-  filename: string;
-  result: ExtractionResult;
-  // Preparer corrections, keyed by field. Persisted so edits survive reload.
-  edits?: Record<string, string>;
-  // Optional client/matter label so the history reads as a workpaper list, not a file list.
-  clientName?: string;
-}
-
 function loadHistory(): HistoryEntry[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as HistoryEntry[]) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+      if (typeof item !== "object" || item === null) return [];
+      const entry = parseHistoryEntry(item);
+      return entry ? [entry] : [];
+    });
   } catch {
     return [];
   }

@@ -50,7 +50,7 @@ export function FieldRow({ field, editedValue, onEdit }: FieldRowProps) {
               defaultValue={displayValue}
               onBlur={(e) => { onEdit?.(e.target.value); setEditing(false); }}
               onKeyDown={(e) => {
-                if (e.key === "Enter") { onEdit?.((e.target as HTMLInputElement).value); setEditing(false); }
+                if (e.key === "Enter") { onEdit?.(e.currentTarget.value); setEditing(false); }
                 if (e.key === "Escape") setEditing(false);
               }}
               autoFocus

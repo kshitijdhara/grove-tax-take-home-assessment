@@ -1,4 +1,5 @@
-import type { ExtractionResult } from "@/shared/types";
+import type { DocumentType, ExtractionResult } from "@/shared/types";
+import { assertNever } from "@/shared/assertNever";
 import { parsePdf } from "./parsePdf";
 import { identifyDocument } from "./identifyDocument";
 import { extractW2 } from "./w2";
@@ -13,6 +14,16 @@ const CONFIDENCE_THRESHOLD = 0.7;
 // Scanned/photographed PDFs produce very little extractable text.
 // Below this threshold we skip regex entirely and go straight to vision.
 const IMAGE_PDF_TEXT_THRESHOLD = 500;
+
+function extractByDocumentType(docType: DocumentType, rawText: string): RegexExtractionResult {
+  switch (docType) {
+    case "W-2":      return extractW2(rawText);
+    case "1099-NEC": return extract1099NEC(rawText);
+    case "1099-INT": return extract1099INT(rawText);
+    case "1099-DIV": return extract1099DIV(rawText);
+    default:         return assertNever(docType);
+  }
+}
 
 function toExtractionResult(
   r: RegexExtractionResult,
@@ -62,14 +73,7 @@ export async function runExtractionPipeline(file: File): Promise<ExtractionResul
     );
   }
 
-  let regexResult: RegexExtractionResult;
-  switch (docType) {
-    case "W-2":      regexResult = extractW2(rawText); break;
-    case "1099-NEC": regexResult = extract1099NEC(rawText); break;
-    case "1099-INT": regexResult = extract1099INT(rawText); break;
-    case "1099-DIV": regexResult = extract1099DIV(rawText); break;
-    default: throw new Error(`Unhandled document type: ${docType}`);
-  }
+  const regexResult = extractByDocumentType(docType, rawText);
 
   const score = regexResult.requiredFieldsFound / regexResult.totalRequiredFields;
 

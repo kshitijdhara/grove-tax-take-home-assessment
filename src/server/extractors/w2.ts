@@ -95,9 +95,9 @@ function findBox12Codes(text: string): Array<{ code: string; amount: string }> {
   const results: Array<{ code: string; amount: string }> = [];
   for (const code of knownCodes) {
     const re = new RegExp(`\\b(${code})\\b[\\t ]+(\\d+(?:,\\d{3})*\\.\\d{2})`, "g");
-    let m: RegExpExecArray | null;
-    if ((m = re.exec(text)) !== null) {
-      const amount = m[2] ?? "";
+    const match = re.exec(text);
+    if (match !== null) {
+      const amount = match[2] ?? "";
       if (amount && !results.some((r) => r.code === code && r.amount === amount)) {
         results.push({ code, amount });
       }
@@ -111,13 +111,42 @@ function findBox14Items(text: string): Array<{ label: string; amount: string }> 
   const labels = ["SUI", "SDI", "LST", "SIT", "PFML", "FLI", "VDI", "UI", "DI"];
   for (const label of labels) {
     const before = new RegExp(`(\\d+(?:,\\d{3})*\\.\\d{2})\\s+${label}\\b`, "gi");
-    let m = before.exec(text);
-    if (m?.[1]) { results.push({ label, amount: m[1] }); continue; }
+    const beforeMatch = before.exec(text);
+    if (beforeMatch?.[1]) { results.push({ label, amount: beforeMatch[1] }); continue; }
     const after = new RegExp(`\\b${label}\\b[^\\d]{0,10}(\\d+(?:,\\d{3})*\\.\\d{2})`, "gi");
-    m = after.exec(text);
-    if (m?.[1]) results.push({ label, amount: m[1] });
+    const afterMatch = after.exec(text);
+    if (afterMatch?.[1]) results.push({ label, amount: afterMatch[1] });
   }
   return results;
+}
+
+function resolveLocalityName(text: string, localityCode: string, baseName: string): string {
+  if (baseName.replace(/\s/g, "").length > 8) return baseName;
+  return text.match(
+    new RegExp(`\\b${localityCode}\\n([A-Z][A-Z ]+[A-Z])\\s+[A-Z]{2}\\s+\\d{5}`)
+  )?.[1]?.trim() ?? baseName;
+}
+
+function extractPsdLocality(text: string): {
+  localTax: string | null;
+  localityCode: string | null;
+  localityName: string | null;
+} | null {
+  const psdMatch = text.match(/(\d{6})[ \t]+([A-Z]{3,}[^\n]*)(?:\n([A-Z]{2,12}))?\n(\d+(?:,\d{3})*\.\d{2})/);
+  if (!psdMatch) return null;
+
+  const localityCode = psdMatch[1] ?? null;
+  const part1 = psdMatch[2]?.trim() ?? "";
+  const part2 = psdMatch[3]?.trim() ?? "";
+  const baseName = part2 ? `${part1}${part2}` : part1 || null;
+  const localTax = psdMatch[4] ?? null;
+
+  const localityName =
+    localityCode && baseName
+      ? resolveLocalityName(text, localityCode, baseName)
+      : baseName;
+
+  return { localTax, localityCode, localityName };
 }
 
 // ─── Main extractor ───────────────────────────────────────────────────────────
@@ -207,7 +236,7 @@ export function extractW2(text: string): RegexExtractionResult {
 
   // --- Wages (Box 1) ---
   // Strategy order: reversed-layout marker → space-separated format → IRS label → box number
-  let wages: string | null =
+  const wagesFromPatterns =
     findMoney(text, /Reported\s+W-?2\s+Wages[^\d]*(?:0\.00\s+)?(\d+(?:,\d{3})*\.\d{2})/i) ??
     findSpaceSeparatedAmount(text, "Box\\s+1\\s+of\\s+W-?2") ??
     findMoney(
@@ -217,20 +246,18 @@ export function extractW2(text: string): RegexExtractionResult {
       new RegExp(`box\\s*1\\b[^a-z\\d]{0,30}${MONEY}`, "i")
     );
 
-  // --- Federal income tax withheld (Box 2) ---
-  let fedTax: string | null = findMoney(
+  const fedTaxFromPatterns = findMoney(
     text,
     new RegExp(`2\\s+federal\\s+income\\s+tax\\s+withheld[^\\d\\n]{0,80}${MONEY}`, "i"),
     new RegExp(`federal\\s+income\\s+tax\\s+withheld[^\\d\\n]{0,80}${MONEY}`, "i"),
     new RegExp(`box\\s*2\\b[^a-z\\d]{0,20}${MONEY}`, "i")
   );
 
-  // Interleaved-pair fallback: works for any multi-copy layout, not just one processor
-  if (!wages || !fedTax) {
-    const pair = findInterleavedValues(text);
-    if (!wages && pair.wages) wages = pair.wages;
-    if (!fedTax && pair.fedTax) fedTax = pair.fedTax;
-  }
+  const interleavedPair =
+    wagesFromPatterns && fedTaxFromPatterns ? null : findInterleavedValues(text);
+
+  const wages = wagesFromPatterns ?? interleavedPair?.wages ?? null;
+  const fedTax = fedTaxFromPatterns ?? interleavedPair?.fedTax ?? null;
 
   // --- SS wages (Box 3) ---
   const ssWages =
@@ -349,42 +376,22 @@ export function extractW2(text: string): RegexExtractionResult {
   // PSD codes (6-digit locality codes) appear in Pennsylvania W-2s from multiple processors.
   // Some PDF renderers split locality names mid-word (e.g. "PITTS\nBURGH") — the optional
   // continuation group joins them without a space.
-  let localTax: string | null = null;
-  let localityCode: string | null = null;
-  let localityName: string | null = null;
-
-  const psdMatch = text.match(/(\d{6})[ \t]+([A-Z]{3,}[^\n]*)(?:\n([A-Z]{2,12}))?\n(\d+(?:,\d{3})*\.\d{2})/);
-  if (psdMatch) {
-    localityCode = psdMatch[1] ?? null;
-    const part1 = psdMatch[2]?.trim() ?? "";
-    const part2 = psdMatch[3]?.trim() ?? "";
-    localityName = part2 ? `${part1}${part2}` : part1 || null;
-    localTax = psdMatch[4] ?? null;
-
-    // ADP abbreviates city names in the PSD line (e.g. "PITTS" for Pittsburgh).
-    // The full name often appears in the address section: "700102\nPITTSBURGH PA 15217".
-    if (localityCode && localityName && localityName.replace(/\s/g, "").length <= 8) {
-      const fullCity = text.match(
-        new RegExp(`\\b${localityCode}\\n([A-Z][A-Z ]+[A-Z])\\s+[A-Z]{2}\\s+\\d{5}`)
-      )?.[1]?.trim();
-      if (fullCity) localityName = fullCity;
-    }
-  }
-
-  if (!localTax) {
-    localTax = findMoney(
+  const psdLocality = extractPsdLocality(text);
+  const localTax =
+    psdLocality?.localTax ??
+    findMoney(
       text,
       new RegExp(`19\\s+local\\s+income\\s+tax[^\\d]{0,80}${MONEY}`, "i"),
       new RegExp(`[Ll]ocal\\s+income\\s+tax[^\\d]{0,80}${MONEY}`)
     );
-  }
-  if (!localityName) {
-    localityName = findText(
+  const localityCode = psdLocality?.localityCode ?? null;
+  const localityName =
+    psdLocality?.localityName ??
+    findText(
       text,
       /[Ll]ocality\s+name[^\n]*\n+([^\n]{2,40})/,
       /20\s+[Ll]ocality[^\n]*\n+([^\n]{2,40})/
     );
-  }
 
   // --- Confidence: 6 required fields ---
   const required = [wages, fedTax, ssTax ?? ssWages, payerEin, recipientName, taxYear];

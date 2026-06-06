@@ -1,7 +1,10 @@
-import "./FileUploader.css";
 import { useState, useRef } from "react";
 import type { DragEvent, ChangeEvent } from "react";
 import type { ExtractionResult } from "@/shared/types";
+import { assertNever } from "@/shared/assertNever";
+import { parseApiErrorBody, parseExtractionResult } from "@/shared/parseExtraction";
+import { isNode } from "../../utils/dom";
+import "./FileUploader.css";
 import { DropZone } from "../../components/DropZone/DropZone";
 import { Button } from "../../components/Button/Button";
 import { ExtractionResultView } from "../../components/ExtractionResult/ExtractionResult";
@@ -67,7 +70,8 @@ export function FileUploader({ onSuccess, edits, onEditsChange, clientName, onCl
   };
 
   const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+    const related = e.relatedTarget;
+    if (!isNode(related) || !e.currentTarget.contains(related)) {
       setIsDragging(false);
     }
   };
@@ -88,10 +92,15 @@ export function FileUploader({ onSuccess, edits, onEditsChange, clientName, onCl
       form.append("file", state.file);
       const res = await fetch("/api/extract/pdf", { method: "POST", body: form });
       if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { error?: string };
+        const rawBody = await res.json().catch(() => ({}));
+        const body = typeof rawBody === "object" && rawBody !== null ? parseApiErrorBody(rawBody) : {};
         throw new Error(body.error ?? `Server error ${res.status}`);
       }
-      const result = await res.json() as ExtractionResult;
+      const rawResult = await res.json();
+      if (typeof rawResult !== "object" || rawResult === null) {
+        throw new Error("Server returned malformed extraction data");
+      }
+      const result = parseExtractionResult(rawResult);
       setState((s) => ({ ...s, status: "success", result }));
       onSuccess?.(result, state.file?.name ?? "document.pdf");
     } catch (err) {
@@ -106,6 +115,81 @@ export function FileUploader({ onSuccess, edits, onEditsChange, clientName, onCl
 
   const { status, file, result, errorMessage } = state;
 
+  const renderPanel = () => {
+    switch (status) {
+      case "idle":
+        return (
+          <DropZone
+            isDragging={isDragging}
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onClick={handleBrowseClick}
+          />
+        );
+      case "selected":
+        return file ? (
+          <div className="file-uploader__panel file-uploader__selected">
+            <div className="file-uploader__file-row">
+              <div className="file-uploader__pdf-badge" aria-hidden="true">
+                <VscFilePdf size={32} color="#E53E3E" />
+              </div>
+              <div className="file-uploader__file-meta">
+                <p className="file-uploader__file-name">{file.name}</p>
+                <p className="file-uploader__file-size">{formatBytes(file.size)}</p>
+              </div>
+            </div>
+            <div className="file-uploader__actions">
+              <Button variant="ghost" onClick={handleReset}>Change file</Button>
+              <Button variant="primary" onClick={handleUpload}>Extract data</Button>
+            </div>
+          </div>
+        ) : null;
+      case "uploading":
+        return (
+          <div className="file-uploader__panel file-uploader__uploading">
+            <div className="file-uploader__spinner" role="status" aria-label="Extracting data" />
+            <p className="file-uploader__uploading-label">Extracting data…</p>
+            {file && <p className="file-uploader__uploading-filename">{file.name}</p>}
+          </div>
+        );
+      case "success":
+        return result ? (
+          <div className="file-uploader__panel file-uploader__success">
+            <div className="file-uploader__success-header">
+              <div className="file-uploader__status-icon" aria-hidden="true">
+                <CiCircleCheck size={28} color="var(--success)" />
+              </div>
+              <p className="file-uploader__status-title">Extraction complete</p>
+            </div>
+            <ExtractionResultView
+              result={result}
+              edits={edits}
+              onEditsChange={onEditsChange}
+              clientName={clientName}
+              onClientNameChange={onClientNameChange}
+            />
+            <div className="file-uploader__success-footer">
+              <Button variant="ghost" onClick={handleReset}>Upload another file</Button>
+            </div>
+          </div>
+        ) : null;
+      case "error":
+        return (
+          <div className="file-uploader__panel file-uploader__error-view">
+            <div className="file-uploader__status-icon" aria-hidden="true">
+              <MdErrorOutline size={36} color="var(--error)" />
+            </div>
+            <p className="file-uploader__status-title">Something went wrong</p>
+            <p className="file-uploader__error-message">{errorMessage}</p>
+            <Button variant="ghost" onClick={handleReset}>Try again</Button>
+          </div>
+        );
+      default:
+        return assertNever(status);
+    }
+  };
+
   return (
     <div className={`file-uploader${status === "success" && result ? " file-uploader--wide" : ""}`}>
       <input
@@ -117,74 +201,7 @@ export function FileUploader({ onSuccess, edits, onEditsChange, clientName, onCl
         aria-hidden="true"
         tabIndex={-1}
       />
-
-      {status === "idle" && (
-        <DropZone
-          isDragging={isDragging}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onClick={handleBrowseClick}
-        />
-      )}
-
-      {status === "selected" && file && (
-        <div className="file-uploader__panel file-uploader__selected">
-          <div className="file-uploader__file-row">
-            <div className="file-uploader__pdf-badge" aria-hidden="true">
-              <VscFilePdf size={32} color="#E53E3E" />
-            </div>
-            <div className="file-uploader__file-meta">
-              <p className="file-uploader__file-name">{file.name}</p>
-              <p className="file-uploader__file-size">{formatBytes(file.size)}</p>
-            </div>
-          </div>
-          <div className="file-uploader__actions">
-            <Button variant="ghost" onClick={handleReset}>Change file</Button>
-            <Button variant="primary" onClick={handleUpload}>Extract data</Button>
-          </div>
-        </div>
-      )}
-
-      {status === "uploading" && (
-        <div className="file-uploader__panel file-uploader__uploading">
-          <div className="file-uploader__spinner" role="status" aria-label="Extracting data" />
-          <p className="file-uploader__uploading-label">Extracting data…</p>
-          {file && <p className="file-uploader__uploading-filename">{file.name}</p>}
-        </div>
-      )}
-
-      {status === "success" && result && (
-        <div className="file-uploader__panel file-uploader__success">
-          <div className="file-uploader__success-header">
-            <div className="file-uploader__status-icon" aria-hidden="true">
-              <CiCircleCheck size={28} color="var(--success)" />
-            </div>
-            <p className="file-uploader__status-title">Extraction complete</p>
-          </div>
-          <ExtractionResultView
-            result={result}
-            edits={edits}
-            onEditsChange={onEditsChange}
-            clientName={clientName}
-            onClientNameChange={onClientNameChange}
-          />
-          <div className="file-uploader__success-footer">
-            <Button variant="ghost" onClick={handleReset}>Upload another file</Button>
-          </div>
-        </div>
-      )}
-
-      {status === "error" && (
-        <div className="file-uploader__panel file-uploader__error-view">
-          <div className="file-uploader__status-icon" aria-hidden="true">
-            <MdErrorOutline size={36} color="var(--error)" />
-          </div>
-          <p className="file-uploader__status-title">Something went wrong</p>
-          <p className="file-uploader__error-message">{errorMessage}</p>
-          <Button variant="ghost" onClick={handleReset}>Try again</Button>
-        </div>
-      )}
+      {renderPanel()}
     </div>
   );
 }

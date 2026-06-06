@@ -6,7 +6,7 @@ import { FieldRow } from "./FieldRow";
 import { ExtractionBadge } from "./ExtractionBadge";
 
 // A field-like shape used to key both extracted and missing fields uniformly.
-type Keyable = { box?: string; label: string };
+interface Keyable { box?: string; label: string; }
 // Null byte separator avoids collisions with box/label values containing "-".
 const editKey = (f: Keyable) => `${f.box ?? ""}\x00${f.label}`;
 
@@ -65,7 +65,7 @@ function MissingFieldRow({ field, value, onEnter }: {
         defaultValue={value ?? ""}
         placeholder={field.reason}
         onBlur={(e) => onEnter(e.target.value.trim())}
-        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
       />
     </div>
   );
@@ -231,7 +231,7 @@ export function ExtractionResultView({
             defaultValue={clientName ?? ""}
             placeholder="e.g. Smith, John"
             onBlur={(e) => onClientNameChange(e.target.value.trim())}
-            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
           />
         </div>
       )}
