@@ -1,10 +1,12 @@
 import type { DocumentType } from "@/shared/types";
 
 export function identifyDocument(text: string): DocumentType | null {
-  const t = text.toLowerCase();
-  if (t.includes("w-2") || t.includes("wage and tax statement")) return "W-2";
-  if (t.includes("1099-nec") || t.includes("nonemployee compensation")) return "1099-NEC";
-  if (t.includes("1099-int") || t.includes("interest income")) return "1099-INT";
-  if (t.includes("1099-div") || t.includes("dividends and distributions")) return "1099-DIV";
+  const t = text.toLowerCase().replace(/\s+/g, " ");
+  if (/\bw-?2\b/.test(t) || t.includes("wage and tax statement") || t.includes("wage & tax")) return "W-2";
+  if (/1099[\s-]*nec\b/.test(t) || t.includes("nonemployee compensation") || t.includes("non-employee compensation")) return "1099-NEC";
+  // 1099-MISC maps to NEC extractor (pre-2020 forms, same core fields)
+  if (/1099[\s-]*misc\b/.test(t) || t.includes("miscellaneous income") || t.includes("miscellaneous information")) return "1099-NEC";
+  if (/1099[\s-]*int\b/.test(t) || t.includes("interest income")) return "1099-INT";
+  if (/1099[\s-]*div\b/.test(t) || t.includes("dividends and distributions") || t.includes("dividend income")) return "1099-DIV";
   return null;
 }

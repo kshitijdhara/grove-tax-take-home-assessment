@@ -35,6 +35,10 @@ export function FileUploader() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const acceptFile = (file: File) => {
+    if (file.size > 25 * 1024 * 1024) {
+      setState({ status: "error", file: null, result: null, errorMessage: "File is too large (max 25 MB). Please compress the PDF and try again." });
+      return;
+    }
     if (file.type !== "application/pdf") {
       setState({ status: "error", file: null, result: null, errorMessage: "Only PDF files are supported. Please drop a .pdf file." });
       return;

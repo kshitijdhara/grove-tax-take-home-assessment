@@ -227,13 +227,49 @@
   flex-shrink: 0;
 }
 
+/* Missing field rows */
+.field-row--missing {
+  opacity: 0.5;
+}
+
+.field-row__missing-value {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.field-row__value--absent {
+  color: var(--text-tertiary);
+  font-style: italic;
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
 /* Footer / badge */
 .extraction-result__footer {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   padding: var(--sp-3) var(--sp-6);
   border-top: 1px solid var(--border-subtle);
+}
+
+.download-csv-btn {
+  padding: 4px var(--sp-3);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: color var(--duration-fast) ease, background var(--duration-fast) ease;
+  letter-spacing: 0.1px;
+}
+
+.download-csv-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-3);
 }
 
 .extraction-badge {

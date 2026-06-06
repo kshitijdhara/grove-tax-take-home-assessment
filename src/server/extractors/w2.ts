@@ -1,4 +1,4 @@
-import type { TaxField } from "@/shared/types";
+import type { TaxField, MissingField } from "@/shared/types";
 import type { RegexExtractionResult } from "./types";
 
 // ADP W-2 (and similar payroll processors) produce multi-column layouts where
@@ -88,6 +88,39 @@ function formatMoney(raw: string | null): string | null {
   });
 }
 
+const BOX_12_LABELS: Record<string, string> = {
+  A: "Uncollected SS tax on tips",
+  B: "Uncollected Medicare tax on tips",
+  C: "Taxable group-term life insurance",
+  D: "401(k) elective deferrals",
+  E: "403(b) elective deferrals",
+  F: "408(k)(6) SEP deferrals",
+  G: "457(b) deferrals",
+  H: "501(c)(18)(D) deferrals",
+  J: "Nontaxable sick pay",
+  K: "Excess golden parachute tax",
+  L: "Business expense reimbursements",
+  M: "Uncollected SS tax on GTL (former employee)",
+  N: "Uncollected Medicare tax on GTL (former employee)",
+  P: "Excludable moving expense reimbursements",
+  Q: "Nontaxable combat pay",
+  R: "Archer MSA employer contributions",
+  S: "408(p) SIMPLE deferrals",
+  T: "Adoption benefits",
+  V: "Nonstatutory stock option income",
+  W: "HSA employer contributions",
+  Y: "409A nonqualified deferred compensation",
+  Z: "409A income",
+  AA: "Roth 401(k) contributions",
+  BB: "Roth 403(b) contributions",
+  DD: "Employer-sponsored health coverage cost",
+  EE: "Roth 457(b) contributions",
+  FF: "QSEHRA permitted benefits",
+  GG: "Qualified equity grant income",
+  HH: "Aggregate 83(i) deferrals",
+  II: "Medicaid waiver payments",
+};
+
 // Extract all Box 12 codes from the document.
 // ADP format: single-letter or two-letter code followed by tab/space then amount.
 // Returns array of { code, amount } pairs.
@@ -99,15 +132,13 @@ function findBox12Codes(text: string): Array<{ code: string; amount: string }> {
   ];
   const results: Array<{ code: string; amount: string }> = [];
   for (const code of knownCodes) {
-    // Pattern: code as a standalone token followed by whitespace/tab and amount
     const re = new RegExp(`\\b(${code})\\b[\\t ]+(\\d+(?:,\\d{3})*\\.\\d{2})`, "g");
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
+    if ((m = re.exec(text)) !== null) {
       const amount = m[2] ?? "";
       if (amount && !results.some((r) => r.code === code && r.amount === amount)) {
         results.push({ code, amount });
       }
-      break; // take first occurrence per code
     }
   }
   return results;
@@ -150,25 +181,25 @@ export function extractW2(text: string): RegexExtractionResult {
     ) ?? "";
 
   // --- Employer name ---
-  // ADP: company name is the first non-blank line after "Batch #NNNNN"
+  // Standard IRS label patterns first, then processor-specific (ADP/Paychex) fallbacks.
   const payerName =
     findText(
       text,
-      /Batch\s*#?\s*\d+\s*\n([^\n\t]{3,60})/i,
       /employer[''s]*\s+name[,\s]+address[^\n]*\n+([^\n]{2,80})/i,
-      /employer[''s]*\s+name[^\n]*\n+([^\n]{2,80})/i
+      /c\s+employer[''s]*\s+name[^\n]*\n+([^\n]{2,80})/i,
+      /company\s+name[:\s]+([^\n]{3,60})/i,
+      /Batch\s*#?\s*\d+\s*\n([^\n\t]{3,60})/i
     ) ?? "";
 
   // --- Employee name ---
-  // ADP all-caps layout: personal names have 3+ words (FIRST MIDDLE LAST), which
-  // distinguishes them from placeholders like "APPLIED FOR" (only 2 words).
+  // Standard IRS labeled patterns first (Gusto, Workday, Ceridian), then ADP all-caps fallback.
   const recipientName =
     findText(
       text,
+      /employee[''s]*\s+first\s+name[^\n]*\n+([A-Z][a-zA-Z\-]+(?:\s+[A-Z][a-zA-Z\-]*){1,3})/i,
+      /e\/f\s+employee[''s]*\s+name[^\n]*\n+([^\n]{2,60})/i,
       /([A-Z]{2,}(?:\s+[A-Z]{2,}){2,3})\n\d+\.\d{2}/,
-      /(?!APPLIED\s+FOR\b)([A-Z]{3,}\s+[A-Z]{3,})\n\d+\.\d{2}/,
-      /employee[''s]*\s+(?:first\s+name\b[^\n]*\n+|name[^\n]*\n+)([A-Z][a-zA-Z]+(?:[\s,]+[A-Z][a-zA-Z]*){1,3})/i,
-      /employee[''s]*\s+name[^\n]*\n+([^\n]{2,60})/i
+      /(?!APPLIED\s+FOR\b)([A-Z]{3,}\s+[A-Z]{3,})\n\d+\.\d{2}/
     ) ?? "";
 
   // --- SSN last 4 ---
@@ -258,7 +289,8 @@ export function extractW2(text: string): RegexExtractionResult {
   const box14Items = findBox14Items(text);
 
   // --- State (Box 15) ---
-  const state = findText(text, /\b(PA|CA|NY|TX|FL|IL|OH|WA|CO|GA|MA|AZ|NC|MI|NJ)\b/);
+  const ALL_STATES = "AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC";
+  const state = findText(text, new RegExp(`\\b(${ALL_STATES})\\b`));
 
   // --- State wages (Box 16) ---
   // ADP: amount appears BEFORE "Box 16 of W-2" label in earnings summary
@@ -345,41 +377,8 @@ export function extractW2(text: string): RegexExtractionResult {
   add("Box 6", "Medicare tax withheld", medicareTax);
 
   // Box 12 codes
-  const box12Labels: Record<string, string> = {
-    A: "Uncollected SS tax on tips",
-    B: "Uncollected Medicare tax on tips",
-    C: "Taxable group-term life insurance",
-    D: "401(k) elective deferrals",
-    E: "403(b) elective deferrals",
-    F: "408(k)(6) SEP deferrals",
-    G: "457(b) deferrals",
-    H: "501(c)(18)(D) deferrals",
-    J: "Nontaxable sick pay",
-    K: "Excess golden parachute tax",
-    L: "Business expense reimbursements",
-    M: "Uncollected SS tax on GTL (former employee)",
-    N: "Uncollected Medicare tax on GTL (former employee)",
-    P: "Excludable moving expense reimbursements",
-    Q: "Nontaxable combat pay",
-    R: "Archer MSA employer contributions",
-    S: "408(p) SIMPLE deferrals",
-    T: "Adoption benefits",
-    V: "Nonstatutory stock option income",
-    W: "HSA employer contributions",
-    Y: "409A nonqualified deferred compensation",
-    Z: "409A income",
-    AA: "Roth 401(k) contributions",
-    BB: "Roth 403(b) contributions",
-    DD: "Employer-sponsored health coverage cost",
-    EE: "Roth 457(b) contributions",
-    FF: "QSEHRA permitted benefits",
-    GG: "Qualified equity grant income",
-    HH: "Aggregate 83(i) deferrals",
-    II: "Medicaid waiver payments",
-  };
-
   for (const { code, amount } of box12Codes) {
-    const label = box12Labels[code] ?? `Code ${code}`;
+    const label = BOX_12_LABELS[code] ?? `Code ${code}`;
     add(`Box 12 – ${code}`, label, amount);
   }
 
@@ -400,6 +399,11 @@ export function extractW2(text: string): RegexExtractionResult {
   if (localTax) add("Box 19", "Local income tax", localTax);
   if (localityName) addText("Box 20", "Locality name", localityName);
 
+  // Track boxes that must exist on every W-2 but couldn't be extracted
+  const missingFields: MissingField[] = [];
+  if (!ssTax) missingFields.push({ box: "Box 4", label: "Social security tax withheld", reason: "Not found in document — verify manually" });
+  if (!medicareTax) missingFields.push({ box: "Box 6", label: "Medicare tax withheld", reason: "Not found in document — verify manually" });
+
   return {
     documentType: "W-2",
     taxYear,
@@ -408,6 +412,7 @@ export function extractW2(text: string): RegexExtractionResult {
     recipientName,
     recipientSsn4,
     fields,
+    missingFields: missingFields.length > 0 ? missingFields : undefined,
     requiredFieldsFound,
     totalRequiredFields: REQUIRED_COUNT,
   };

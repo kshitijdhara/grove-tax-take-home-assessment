@@ -4,6 +4,9 @@ import { EXTRACTION_TOOL } from "./claudeFallback";
 
 export async function claudeVisionExtract(file: File): Promise<ExtractionResult> {
   const anthropic = new Anthropic();
+  if (file.size > 20 * 1024 * 1024) {
+    throw new Error("PDF too large for vision extraction (max 20 MB).");
+  }
   const bytes = await file.arrayBuffer();
   const base64 = Buffer.from(bytes).toString("base64");
 
@@ -44,6 +47,6 @@ export async function claudeVisionExtract(file: File): Promise<ExtractionResult>
   return {
     ...data,
     extractionMethod: "ai",
-    overallConfidence: "high",
+    overallConfidence: "low",
   };
 }

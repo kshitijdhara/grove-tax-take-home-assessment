@@ -74,5 +74,9 @@ export async function claudeFallback(
     throw new Error("Claude did not return a structured tool_use block");
   }
 
-  return toolBlock.input as ClaudeExtractedData;
+  const raw = toolBlock.input as Record<string, unknown>;
+  if (!raw.documentType || !Array.isArray(raw.fields)) {
+    throw new Error("Claude returned malformed extraction data");
+  }
+  return raw as unknown as ClaudeExtractedData;
 }

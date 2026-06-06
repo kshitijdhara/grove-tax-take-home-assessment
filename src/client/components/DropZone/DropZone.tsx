@@ -30,7 +30,7 @@ export function DropZone({ isDragging, onDrop, onDragOver, onDragLeave, onClick 
       <p className="drop-zone__title">
         {isDragging ? "Release to upload" : "Drop your PDF here"}
       </p>
-      <p className="drop-zone__subtitle">or click to browse files</p>
+      <p className="drop-zone__subtitle">W-2 · 1099-NEC · 1099-INT · 1099-DIV</p>
     </div>
   );
 }

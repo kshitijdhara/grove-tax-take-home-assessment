@@ -3,13 +3,17 @@ import index from "../client/index.html";
 import { runExtractionPipeline } from "./extractors/pipeline";
 
 const server = serve({
-  port: 3100,
+  port: Number(process.env.PORT ?? 3100),
   routes: {
     // Serve index.html for all unmatched routes.
     "/*": index,
 
     "/api/extract/pdf": {
       async POST(req) {
+        const contentLength = Number(req.headers.get("content-length") ?? 0);
+        if (contentLength > 25 * 1024 * 1024) {
+          return Response.json({ error: "File too large. Maximum size is 25 MB." }, { status: 413 });
+        }
         const form = await req.formData();
         const file = form.get("file");
         if (!(file instanceof File)) {

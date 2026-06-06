@@ -9,12 +9,19 @@ export interface TaxField {
   confidence: ConfidenceLevel;
 }
 
+export interface MissingField {
+  box: string;
+  label: string;
+  reason: string;
+}
+
 export interface ExtractionResult {
   documentType: DocumentType;
   taxYear: string;
   payer: { name: string; ein: string };
   recipient: { name: string; ssn_last4: string };
   fields: TaxField[];
+  missingFields?: MissingField[];
   extractionMethod: ExtractionMethod;
   overallConfidence: ConfidenceLevel;
 }

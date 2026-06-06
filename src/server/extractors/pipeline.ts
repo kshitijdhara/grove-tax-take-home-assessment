@@ -12,7 +12,7 @@ import type { RegexExtractionResult } from "./types";
 const CONFIDENCE_THRESHOLD = 0.7;
 // Scanned/photographed PDFs produce very little extractable text.
 // Below this threshold we skip regex entirely and go straight to vision.
-const IMAGE_PDF_TEXT_THRESHOLD = 100;
+const IMAGE_PDF_TEXT_THRESHOLD = 500;
 
 function toExtractionResult(
   r: RegexExtractionResult,
@@ -25,6 +25,7 @@ function toExtractionResult(
     payer: { name: r.payerName, ein: r.payerEin },
     recipient: { name: r.recipientName, ssn_last4: r.recipientSsn4 },
     fields: r.fields,
+    ...(r.missingFields && r.missingFields.length > 0 ? { missingFields: r.missingFields } : {}),
     extractionMethod: method,
     overallConfidence,
   };

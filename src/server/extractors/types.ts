@@ -1,4 +1,4 @@
-import type { DocumentType, TaxField } from "@/shared/types";
+import type { DocumentType, TaxField, MissingField } from "@/shared/types";
 
 export interface RegexExtractionResult {
   documentType: DocumentType;
@@ -8,6 +8,7 @@ export interface RegexExtractionResult {
   recipientName: string;
   recipientSsn4: string;
   fields: TaxField[];
+  missingFields?: MissingField[];
   requiredFieldsFound: number;
   totalRequiredFields: number;
 }

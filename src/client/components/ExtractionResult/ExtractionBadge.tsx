@@ -7,7 +7,7 @@ interface ExtractionBadgeProps {
 export function ExtractionBadge({ method }: ExtractionBadgeProps) {
   return (
     <span className={`extraction-badge extraction-badge--${method}`}>
-      {method === "ai" ? "AI-assisted" : "Regex"}
+      {method === "ai" ? "Needs review" : "Auto-verified"}
     </span>
   );
 }
