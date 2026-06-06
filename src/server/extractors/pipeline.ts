@@ -3,7 +3,8 @@ import { assertNever } from "@/shared/assertNever";
 import { computeOverallConfidence } from "@/shared/confidence";
 import { correctedFormWarning, detectCorrectedForm } from "@/shared/documentFlags";
 import { mergeRegexAndAi } from "@/shared/mergeExtraction";
-import { parsePdf } from "./parsePdf";
+import { logExtraction } from "../extractionLog";
+import { parsePdf, parsePdfSafe } from "./parsePdf";
 import { identifyDocument } from "./identifyDocument";
 import { extractW2 } from "./w2";
 import { extract1099NEC } from "./1099nec";
@@ -29,10 +30,17 @@ function appendWarning(existing: string | undefined, addition: string): string {
   return existing ? `${existing} ${addition}` : addition;
 }
 
+interface ToResultOptions {
+  warning?: string;
+  corrected?: boolean;
+  formTypeWarning?: string;
+  aiValidationFailed?: boolean;
+}
+
 function toExtractionResult(
   r: RegexExtractionResult,
   method: ExtractionResult["extractionMethod"],
-  options?: { warning?: string; corrected?: boolean }
+  options?: ToResultOptions
 ): ExtractionResult {
   const base = {
     documentType: r.documentType,
@@ -43,6 +51,8 @@ function toExtractionResult(
     ...(r.missingFields && r.missingFields.length > 0 ? { missingFields: r.missingFields } : {}),
     ...(options?.warning ? { warning: options.warning } : {}),
     ...(options?.corrected ? { corrected: true } : {}),
+    ...(options?.formTypeWarning ? { formTypeWarning: options.formTypeWarning } : {}),
+    ...(options?.aiValidationFailed ? { aiValidationFailed: true } : {}),
     extractionMethod: method,
   };
   return {
@@ -51,10 +61,25 @@ function toExtractionResult(
   };
 }
 
+function finishLog(startMs: number, result: ExtractionResult, aiValidationFailed: boolean): ExtractionResult {
+  logExtraction({
+    timestamp: new Date().toISOString(),
+    documentType: result.documentType,
+    extractionMethod: result.extractionMethod,
+    fieldCount: result.fields.length,
+    disagreementCount: result.disagreements?.length ?? 0,
+    missingFieldCount: result.missingFields?.length ?? 0,
+    aiValidationFailed,
+    durationMs: Date.now() - startMs,
+  });
+  return result;
+}
+
 export async function runExtractionPipeline(
   file: File,
   onProgress?: (stage: ProgressStage) => void
 ): Promise<ExtractionResult> {
+  const startMs = Date.now();
   const report = (stage: ProgressStage) => onProgress?.(stage);
 
   report("parsing");
@@ -70,28 +95,24 @@ export async function runExtractionPipeline(
       );
     }
     report("validating");
-    try {
-      const result = await claudeVisionExtract(file);
-      report("complete");
-      return {
-        ...result,
-        ...(corrected ? { corrected: true, warning: appendWarning(result.warning, correctedWarning!) } : {}),
-      };
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : "Unknown error";
-      throw new Error(
-        `AI vision extraction failed: ${reason}. Ensure the document is clearly photographed with all text visible and try again.`
-      );
-    }
+    const partialText = await parsePdfSafe(file);
+    const visionResult = await claudeVisionExtract(file, partialText);
+    report("complete");
+    return finishLog(startMs, {
+      ...visionResult,
+      ...(corrected ? { corrected: true, warning: appendWarning(visionResult.warning, correctedWarning!) } : {}),
+    }, false);
   }
 
   report("identifying");
-  const docType = identifyDocument(rawText);
-  if (!docType) {
+  const identified = identifyDocument(rawText);
+  if (!identified) {
     throw new Error(
       "Could not identify the document type. Supported forms: W-2, 1099-NEC, 1099-INT, 1099-DIV."
     );
   }
+
+  const { documentType: docType, formTypeWarning } = identified;
 
   report("extracting");
   const regexPromise = Promise.resolve(extractByDocumentType(docType, rawText));
@@ -102,17 +123,18 @@ export async function runExtractionPipeline(
   if (!aiPromise) {
     const regexResult = await regexPromise;
     report("complete");
-    return toExtractionResult(
+    return finishLog(startMs, toExtractionResult(
       regexResult,
       "regex",
       {
         corrected: corrected || undefined,
+        formTypeWarning,
         warning: appendWarning(
           correctedWarning,
           "AI validation unavailable — pattern matching only. Verify all fields manually."
         ),
       }
-    );
+    ), false);
   }
 
   report("validating");
@@ -120,6 +142,7 @@ export async function runExtractionPipeline(
     const [regexResult, aiData] = await Promise.all([regexPromise, aiPromise]);
     const regexExtraction = toExtractionResult(regexResult, "regex", {
       corrected: corrected || undefined,
+      formTypeWarning,
       warning: correctedWarning,
     });
     const merged = mergeRegexAndAi(
@@ -130,25 +153,28 @@ export async function runExtractionPipeline(
       aiData
     );
     report("complete");
-    return {
+    return finishLog(startMs, {
       ...merged,
+      formTypeWarning,
       ...(corrected ? { corrected: true, warning: appendWarning(merged.warning, correctedWarning!) } : {}),
-    };
+    }, false);
   } catch (err) {
     const regexResult = await regexPromise;
     const reason = err instanceof Error ? err.message : "Unknown error";
     report("complete");
-    return toExtractionResult(
+    return finishLog(startMs, toExtractionResult(
       regexResult,
       "regex",
       {
         corrected: corrected || undefined,
+        formTypeWarning,
+        aiValidationFailed: true,
         warning: appendWarning(
           correctedWarning,
-          `AI validation failed (${reason}). Showing pattern-matched extraction — verify all fields manually before use.`
+          `AI validation failed (${reason}). Pattern matching only — verify every field manually before use.`
         ),
       }
-    );
+    ), true);
   }
 }
 

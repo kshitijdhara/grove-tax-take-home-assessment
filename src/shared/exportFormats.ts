@@ -1,4 +1,5 @@
 import { META_KEYS, fieldKey } from "@/shared/extractionKeys";
+import type { HistoryEntry } from "@/shared/parseExtraction";
 import { resolvedFieldValue } from "@/shared/resolvedResult";
 import type { ExtractionResult, TaxField } from "@/shared/types";
 
@@ -97,11 +98,14 @@ export function buildVerticalCsv(result: ExtractionResult, ctx: ExportContext): 
 }
 
 export function buildRowCsv(result: ExtractionResult, ctx: ExportContext): string {
-  const { edits, signOff } = ctx;
+  const { edits, verified, signOff } = ctx;
+  const fieldHeaders = result.fields.map((field) => (field.box ? `${field.box} ${field.label}` : field.label));
+  const verifiedHeaders = result.fields.map((field) => `${field.box ?? field.label} Verified`);
   const header = [
     "Document Type", "Tax Year", "Payer Name", "Payer EIN", "Recipient Name", "Recipient SSN",
     "ExtractionMethod", "Preparer", "ExportedAt",
-    ...result.fields.map((field) => (field.box ? `${field.box} ${field.label}` : field.label)),
+    ...fieldHeaders,
+    ...verifiedHeaders,
     ...(result.missingFields ?? [])
       .filter((mf) => edits[fieldKey(mf)])
       .map((mf) => `${mf.box} ${mf.label}`),
@@ -117,6 +121,7 @@ export function buildRowCsv(result: ExtractionResult, ctx: ExportContext): strin
     signOff?.preparerName ?? "",
     signOff?.exportedAt ?? "",
     ...result.fields.map((field) => resolvedFieldValue(edits, field)),
+    ...result.fields.map((field) => (verified[fieldKey(field)] ? "yes" : "no")),
     ...(result.missingFields ?? [])
       .map((mf) => edits[fieldKey(mf)])
       .filter((value): value is string => Boolean(value)),
@@ -184,4 +189,32 @@ export function exportFilename(result: ExtractionResult, suffix: string): string
 
 export function orderedFields(result: ExtractionResult): TaxField[] {
   return [...result.fields];
+}
+
+export function buildClientRowCsv(clientName: string, entries: HistoryEntry[]): string {
+  const rows = entries.map((entry) => {
+    const ctx: ExportContext = {
+      edits: entry.edits ?? {},
+      verified: entry.verified ?? {},
+      signOff: entry.preparerName && entry.lastExportedAt
+        ? {
+            preparerName: entry.preparerName,
+            exportedAt: entry.lastExportedAt,
+            extractionMethod: entry.result.extractionMethod,
+          }
+        : undefined,
+    };
+    return buildRowCsv(entry.result, ctx).split("\n").slice(-1)[0] ?? "";
+  });
+
+  if (entries.length === 0) return "";
+
+  const sampleCtx: ExportContext = { edits: entries[0]?.edits ?? {}, verified: entries[0]?.verified ?? {} };
+  const headerLine = buildRowCsv(entries[0]!.result, sampleCtx).split("\n").find((line) => line.startsWith('"Document'));
+  const safeName = clientName.replace(/\s+/g, "_") || "client";
+  return [`# Client export: ${clientName}`, headerLine ?? "", ...rows].join("\n");
+}
+
+export function clientExportFilename(clientName: string): string {
+  return `${clientName.replace(/\s+/g, "_") || "client"}_workpaper.csv`;
 }

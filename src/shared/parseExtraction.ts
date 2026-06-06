@@ -176,10 +176,14 @@ export interface HistoryEntry {
   timestamp: number;
   filename: string;
   contentHash?: string;
+  returnYear?: string;
+  supersedesId?: string;
   result: ExtractionResult;
   edits?: Record<string, string>;
   verified?: Record<string, boolean>;
   clientName?: string;
+  preparerName?: string;
+  lastExportedAt?: string;
 }
 
 export function parseHistoryEntry(input: object): HistoryEntry | null {
@@ -213,6 +217,22 @@ export function parseHistoryEntry(input: object): HistoryEntry | null {
 
     if ("contentHash" in input && typeof input.contentHash === "string") {
       entry.contentHash = input.contentHash;
+    }
+
+    if ("returnYear" in input && typeof input.returnYear === "string") {
+      entry.returnYear = input.returnYear;
+    }
+
+    if ("supersedesId" in input && typeof input.supersedesId === "string") {
+      entry.supersedesId = input.supersedesId;
+    }
+
+    if ("preparerName" in input && typeof input.preparerName === "string") {
+      entry.preparerName = input.preparerName;
+    }
+
+    if ("lastExportedAt" in input && typeof input.lastExportedAt === "string") {
+      entry.lastExportedAt = input.lastExportedAt;
     }
 
     return entry;

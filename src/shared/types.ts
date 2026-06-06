@@ -33,6 +33,8 @@ export interface ExtractionResult {
   disagreements?: FieldDisagreement[];
   warning?: string;
   corrected?: boolean;
+  formTypeWarning?: string;
+  aiValidationFailed?: boolean;
   extractionMethod: ExtractionMethod;
   overallConfidence: ConfidenceLevel;
 }

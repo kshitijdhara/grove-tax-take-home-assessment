@@ -19,12 +19,18 @@ function valuesAgree(a: string, b: string): boolean {
   return false;
 }
 
-function pickRicherField(regexField: TaxField, aiField: TaxField): TaxField {
-  const confidence = valuesAgree(regexField.value, aiField.value) ? "high" : "low";
+function pickMergedField(regexField: TaxField, aiField: TaxField): TaxField {
+  if (valuesAgree(regexField.value, aiField.value)) {
+    return {
+      ...regexField,
+      confidence: "high",
+      sourceText: regexField.sourceText ?? aiField.sourceText,
+    };
+  }
   return {
     ...regexField,
-    value: regexField.value,
-    confidence,
+    value: "",
+    confidence: "low",
     sourceText: regexField.sourceText ?? aiField.sourceText,
   };
 }
@@ -47,7 +53,7 @@ export function mergeRegexAndAi(
         aiValue: aiField.value,
       });
     }
-    return pickRicherField(regexField, aiField);
+    return pickMergedField(regexField, aiField);
   });
 
   const aiOnlyFields = [...aiByKey.values()].map((field) => ({
@@ -79,7 +85,7 @@ export function mergeRegexAndAi(
   const warningParts: string[] = [];
   if (disagreements.length > 0) {
     warningParts.push(
-      `${disagreements.length} field(s) disagree between pattern matching and AI — review highlighted rows.`
+      `${disagreements.length} field(s) disagree between pattern matching and AI — pick a value for each before export.`
     );
   }
 

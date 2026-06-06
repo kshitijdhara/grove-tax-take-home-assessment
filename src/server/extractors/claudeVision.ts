@@ -2,12 +2,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ExtractionResult } from "@/shared/types";
 import { parseExtractedData } from "@/shared/parseExtraction";
 import { EXTRACTION_TOOL } from "./claudeFallback";
-import { redactPII } from "./helpers";
+import { verifySourceText } from "./helpers";
 
-export async function claudeVisionExtract(file: File): Promise<ExtractionResult> {
+export async function claudeVisionExtract(file: File, partialText = ""): Promise<ExtractionResult> {
   const anthropic = new Anthropic();
-  if (file.size > 20 * 1024 * 1024) {
-    throw new Error("PDF too large for vision extraction (max 20 MB).");
+  if (file.size > 25 * 1024 * 1024) {
+    throw new Error("PDF too large for vision extraction (max 25 MB).");
   }
   const bytes = await file.arrayBuffer();
   const base64 = Buffer.from(bytes).toString("base64");
@@ -25,7 +25,7 @@ export async function claudeVisionExtract(file: File): Promise<ExtractionResult>
     model: "claude-sonnet-4-6",
     max_tokens: 4096,
     system:
-      "You are a tax document data extraction assistant. The document is a scanned or photographed image. Carefully read all visible text and extract every tax field exactly as shown. For fields you cannot clearly read, set confidence to \"low\". Never fabricate values — if a value is not visible, omit the field entirely. For each field, set sourceText to a short verbatim quote (20–60 characters) from the document containing or immediately preceding the value, so the preparer can trace it to source.",
+      "You are a tax document data extraction assistant. The document is a scanned or photographed image. Carefully read all visible text and extract every tax field exactly as shown. Never fabricate values — if a value is not visible, omit the field entirely.",
     tools: [EXTRACTION_TOOL],
     tool_choice: { type: "tool", name: "extract_tax_fields" },
     messages: [
@@ -52,14 +52,27 @@ export async function claudeVisionExtract(file: File): Promise<ExtractionResult>
   }
 
   const data = parseExtractedData(toolBlock.input);
-  // The source is an image — there is no text layer to string-verify against — but the model's
-  // sourceText quotes still get displayed/persisted, so redact PII from them.
-  for (const f of data.fields) {
-    if (f.sourceText) f.sourceText = redactPII(f.sourceText);
+
+  if (partialText.replace(/\s+/g, "").length > 0) {
+    verifySourceText(partialText, data.fields);
+  } else {
+    for (const field of data.fields) {
+      delete field.sourceText;
+    }
   }
+
+  const fields = data.fields.map((field) => ({
+    ...field,
+    confidence: "low" as const,
+  }));
+
   return {
     ...data,
+    fields,
     extractionMethod: "ai",
     overallConfidence: "low",
+    warning: partialText.replace(/\s+/g, "").length > 0
+      ? "Scanned document — values verified against partial text where possible. Confirm every field against the source."
+      : "Scanned document — no text layer for citation verification. Confirm every field against the source.",
   };
 }
