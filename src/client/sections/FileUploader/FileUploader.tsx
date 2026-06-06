@@ -26,9 +26,13 @@ function formatBytes(bytes: number): string {
 
 interface FileUploaderProps {
   onSuccess?: (result: ExtractionResult, filename: string) => void;
+  edits?: Record<string, string>;
+  onEditsChange?: (edits: Record<string, string>) => void;
+  clientName?: string;
+  onClientNameChange?: (name: string) => void;
 }
 
-export function FileUploader({ onSuccess }: FileUploaderProps) {
+export function FileUploader({ onSuccess, edits, onEditsChange, clientName, onClientNameChange }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [state, setState] = useState<UploaderState>({
     status: "idle",
@@ -158,7 +162,13 @@ export function FileUploader({ onSuccess }: FileUploaderProps) {
             </div>
             <p className="file-uploader__status-title">Extraction complete</p>
           </div>
-          <ExtractionResultView result={result} />
+          <ExtractionResultView
+            result={result}
+            edits={edits}
+            onEditsChange={onEditsChange}
+            clientName={clientName}
+            onClientNameChange={onClientNameChange}
+          />
           <div className="file-uploader__success-footer">
             <Button variant="ghost" onClick={handleReset}>Upload another file</Button>
           </div>

@@ -111,6 +111,10 @@
   opacity: 0.5;
 }
 
+.history-card__edited {
+  color: var(--accent);
+}
+
 .history-card__chevron {
   font-size: 18px;
   color: var(--text-tertiary);

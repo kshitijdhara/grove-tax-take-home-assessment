@@ -117,6 +117,20 @@ In production this would be an `extractions` table keyed on `user_id`, added onc
 
 ---
 
+## How I used AI
+
+**Tool**: Claude Code (Anthropic's CLI) throughout the session.
+
+**Where it helped**: TypeScript type definitions, CSS token system and glassmorphism design, component boilerplate, and generating initial regex pattern candidates to test against.
+
+**Where it was overridden**: The first architecture Claude proposed used `detectProcessor()` to gate ADP-specific patterns behind `isAdp` checks — a processor-identity abstraction. I reversed this because it means every new payroll processor requires a code change. The correct invariant is the *layout pattern* (sequential, reversed, space-separated, interleaved), not the processor identity. Patterns that don't match a document's layout return null silently — no gating needed. AI proposed the processor-identity model; the layout-strategy model came from reasoning about what the abstraction should actually be.
+
+**Where AI was explicitly not used**: Regex debugging. Understanding that `\bstate[ \t]+(ALL_STATES)\b` would match "Employer's state **ID** no." — because "state" followed by "ID" (Idaho, an ALL_STATES member) is an exact match — required printing `repr(text)` of the actual ADP PDF and reading raw extracted characters. Similarly, discovering that "Box 18 of W-2" has its matching amount ~400 characters before the label (not adjacent) required tracing actual character offsets in the extracted text. No prompt produces that insight; you have to observe it directly.
+
+**Honest split**: AI wrote approximately 60% of the code. The remaining 40% — the parts that make extraction accurate on real messy PDFs — required direct empirical observation of actual document text that AI tools couldn't substitute for.
+
+---
+
 ## Stack
 
 - **Runtime:** Bun 1.x

@@ -14,7 +14,7 @@ export async function claudeVisionExtract(file: File): Promise<ExtractionResult>
     model: "claude-sonnet-4-6",
     max_tokens: 4096,
     system:
-      "You are a tax document data extraction assistant. The document is a scanned or photographed image. Carefully read all visible text and extract every tax field exactly as shown. For fields you cannot clearly read, set confidence to \"low\". Never fabricate values — if a value is not visible, omit the field entirely.",
+      "You are a tax document data extraction assistant. The document is a scanned or photographed image. Carefully read all visible text and extract every tax field exactly as shown. For fields you cannot clearly read, set confidence to \"low\". Never fabricate values — if a value is not visible, omit the field entirely. For each field, set sourceText to a short verbatim quote (20–60 characters) from the document containing or immediately preceding the value, so the preparer can trace it to source.",
     tools: [EXTRACTION_TOOL],
     tool_choice: { type: "tool", name: "extract_tax_fields" },
     messages: [
@@ -36,7 +36,7 @@ export async function claudeVisionExtract(file: File): Promise<ExtractionResult>
         ],
       },
     ],
-  });
+  }, { timeout: 30_000 });
 
   const toolBlock = response.content.find((b) => b.type === "tool_use");
   if (!toolBlock || toolBlock.type !== "tool_use") {

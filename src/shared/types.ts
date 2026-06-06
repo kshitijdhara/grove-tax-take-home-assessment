@@ -7,6 +7,7 @@ export interface TaxField {
   label: string;
   value: string;
   confidence: ConfidenceLevel;
+  sourceText?: string;
 }
 
 export interface MissingField {

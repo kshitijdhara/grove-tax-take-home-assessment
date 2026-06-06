@@ -187,6 +187,84 @@
   flex-direction: column;
 }
 
+/* Wrapper owns the border and low-confidence tint so the source panel shares it */
+.field-row-wrapper {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.field-row-wrapper:last-child { border-bottom: none; }
+.field-row-wrapper .field-row { border-bottom: none; }
+.field-row-wrapper--low { background: rgba(255, 69, 58, 0.06); }
+
+/* Source citation panel */
+.field-row__chevron {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-left: var(--sp-1);
+  flex-shrink: 0;
+}
+.field-row__source {
+  padding: var(--sp-2) var(--sp-6) var(--sp-3);
+  background: var(--surface-1);
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+.field-row__source-label {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.field-row__source-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Copy button — revealed on row hover */
+.field-row__copy {
+  opacity: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  padding: 2px var(--sp-1);
+  border-radius: var(--radius-sm);
+  transition: opacity var(--duration-fast) ease, color var(--duration-fast) ease;
+  flex-shrink: 0;
+}
+.field-row:hover .field-row__copy { opacity: 1; }
+.field-row__copy:hover { color: var(--text-primary); }
+.field-row__copy--done { color: var(--success) !important; opacity: 1 !important; }
+
+/* Inline edit */
+.field-row__value-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: var(--font-weight-medium);
+  text-align: right;
+  outline: none;
+  width: 140px;
+}
+.field-row__value-display--edited { color: var(--accent); }
+.field-row__edited-badge {
+  font-size: 9px;
+  color: var(--accent);
+  letter-spacing: 0.3px;
+  margin-left: var(--sp-1);
+  opacity: 0.7;
+}
+
 .field-row {
   display: flex;
   align-items: baseline;
@@ -246,15 +324,91 @@
   flex-shrink: 0;
 }
 
-/* Missing field rows */
-.field-row--missing {
-  opacity: 0.5;
+/* Missing field rows — dim the label only, keep the input fully usable */
+.field-row--missing .field-row__label {
+  opacity: 0.6;
+}
+.field-row--filled .field-row__label {
+  opacity: 1;
 }
 
 .field-row__missing-value {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 14px;
+}
+
+.field-row__missing-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--border-default);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  text-align: right;
+  outline: none;
+  width: 160px;
+  transition: border-color var(--duration-fast) ease;
+}
+.field-row__missing-input::placeholder {
+  color: var(--text-tertiary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-style: italic;
+}
+.field-row__missing-input:focus {
+  border-bottom-color: var(--accent);
+}
+.field-row--filled .field-row__missing-input {
+  color: var(--accent);
+  border-bottom-style: solid;
+  border-bottom-color: var(--accent);
+}
+
+/* Pencil edit hint — appears on hover over an editable value */
+.field-row__edit-hint {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-left: var(--sp-1);
+  opacity: 0;
+  transition: opacity var(--duration-fast) ease;
+}
+.field-row:hover .field-row__edit-hint { opacity: 0.6; }
+
+/* Client / matter bar */
+.extraction-result__client {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+}
+.extraction-result__client-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+.extraction-result__client-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: var(--font-weight-medium);
+  outline: none;
+}
+.extraction-result__client-input::placeholder {
+  color: var(--text-tertiary);
+  font-weight: var(--font-weight-regular);
+}
+
+/* Export button group */
+.extraction-result__export-group {
+  display: flex;
+  gap: var(--sp-2);
 }
 
 .field-row__value--absent {

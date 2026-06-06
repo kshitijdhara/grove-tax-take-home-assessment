@@ -1,6 +1,6 @@
 import type { TaxField, MissingField } from "@/shared/types";
 import type { RegexExtractionResult } from "./types";
-import { MONEY, findMoney, findText, formatMoney } from "./helpers";
+import { MONEY, findMoney, findText, formatMoney, captureContext } from "./helpers";
 
 // ─── Layout-agnostic helpers ──────────────────────────────────────────────────
 //
@@ -394,10 +394,12 @@ export function extractW2(text: string): RegexExtractionResult {
   const fields: TaxField[] = [];
   const add = (box: string, label: string, raw: string | null, confidence: TaxField["confidence"] = "high") => {
     const v = formatMoney(raw);
-    if (v) fields.push({ box, label, value: v, confidence });
+    if (v) fields.push({ box, label, value: v, confidence,
+      sourceText: raw ? captureContext(text, raw) : undefined });
   };
   const addText = (box: string, label: string, value: string | null) => {
-    if (value) fields.push({ box, label, value, confidence: "high" });
+    if (value) fields.push({ box, label, value, confidence: "high",
+      sourceText: captureContext(text, value) });
   };
 
   if (controlNumber)    addText("Box d", "Control number",   controlNumber);
@@ -431,6 +433,21 @@ export function extractW2(text: string): RegexExtractionResult {
   if (localTax)        add("Box 19", "Local income tax",  localTax);
   if (localityCode)    addText("Box 20", "Locality code", localityCode);
   if (localityName)    addText("Box 20", "Locality name", localityName);
+
+  // IRS rate validation: Box 4 = Box 3 × 6.2%, Box 6 = Box 5 × 1.45%
+  // If a found value is implausible, downgrade confidence rather than trust it silently.
+  const box3f = fields.find(f => f.box === "Box 3");
+  const box4f = fields.find(f => f.box === "Box 4");
+  if (box3f && box4f) {
+    const r = parseFloat(box4f.value.replace(/,/g, "")) / parseFloat(box3f.value.replace(/,/g, ""));
+    if (Math.abs(r - 0.062) > 0.01) box4f.confidence = "low";
+  }
+  const box5f = fields.find(f => f.box === "Box 5");
+  const box6f = fields.find(f => f.box === "Box 6");
+  if (box5f && box6f) {
+    const r = parseFloat(box6f.value.replace(/,/g, "")) / parseFloat(box5f.value.replace(/,/g, ""));
+    if (Math.abs(r - 0.0145) > 0.005) box6f.confidence = "low";
+  }
 
   const missingFields: MissingField[] = [];
   if (!ssTax)       missingFields.push({ box: "Box 4", label: "Social security tax withheld", reason: "Not found in document — verify manually" });

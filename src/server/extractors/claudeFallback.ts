@@ -39,6 +39,7 @@ export const EXTRACTION_TOOL: Anthropic.Messages.Tool = {
             label: { type: "string" },
             value: { type: "string" },
             confidence: { type: "string", enum: ["high", "low"] },
+            sourceText: { type: "string", description: "Short verbatim quote (20-60 chars) from the document text where this value appears, for source traceability" },
           },
           required: ["label", "value", "confidence"],
         },
@@ -58,7 +59,7 @@ export async function claudeFallback(
     model: "claude-haiku-4-5-20251001",
     max_tokens: 4096,
     system:
-      "You are a tax document data extraction assistant. Extract all fields exactly as they appear on the document. For fields you cannot find or are uncertain about, set confidence to \"low\". Never fabricate values — if a value is not present, omit the field entirely.",
+      "You are a tax document data extraction assistant. Extract all fields exactly as they appear on the document. For fields you cannot find or are uncertain about, set confidence to \"low\". Never fabricate values — if a value is not present, omit the field entirely. For each field, set sourceText to a short verbatim quote (20–60 characters) from the document that contains or immediately precedes the value — this enables source traceability for the preparer.",
     tools: [EXTRACTION_TOOL],
     tool_choice: { type: "tool", name: "extract_tax_fields" },
     messages: [
@@ -67,7 +68,7 @@ export async function claudeFallback(
         content: `Extract all fields from this ${docType} tax document:\n\n<document>\n${rawText}\n</document>`,
       },
     ],
-  });
+  }, { timeout: 30_000 });
 
   const toolBlock = response.content.find((b) => b.type === "tool_use");
   if (!toolBlock || toolBlock.type !== "tool_use") {

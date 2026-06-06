@@ -68,6 +68,7 @@ export async function runExtractionPipeline(file: File): Promise<ExtractionResul
     case "1099-NEC": regexResult = extract1099NEC(rawText); break;
     case "1099-INT": regexResult = extract1099INT(rawText); break;
     case "1099-DIV": regexResult = extract1099DIV(rawText); break;
+    default: throw new Error(`Unhandled document type: ${docType}`);
   }
 
   const score = regexResult.requiredFieldsFound / regexResult.totalRequiredFields;
@@ -87,6 +88,7 @@ export async function runExtractionPipeline(file: File): Promise<ExtractionResul
       documentType: docType,
       extractionMethod: "ai",
       overallConfidence: "low",
+      ...(regexResult.missingFields?.length ? { missingFields: regexResult.missingFields } : {}),
     };
   } catch (err) {
     const reason = err instanceof Error ? err.message : "Unknown error";
