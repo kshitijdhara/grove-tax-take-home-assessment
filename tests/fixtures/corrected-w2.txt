@@ -1,0 +1,19 @@
+Form W-2 Wage and Tax Statement 2024
+CORRECTED
+
+Employer's name, address, and ZIP code
+ACME INDUSTRIES INC
+
+Employer identification number (EIN)
+98-7654321
+
+Employee's name
+JANE DOE
+
+1 Wages, tips, other compensation
+14,500.00
+2 Federal income tax withheld
+1,900.00
+
+Employee's social security number
+XXX-XX-5678

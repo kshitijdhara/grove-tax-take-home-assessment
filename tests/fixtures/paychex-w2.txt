@@ -1,0 +1,28 @@
+Form W-2 Wage and Tax Statement 2024
+
+Employer's name, address, and ZIP code
+PAYCHEX INC
+100 MAIN ST
+ROCHESTER NY 14604
+
+Employer identification number (EIN)
+12-3456789
+
+Employee's name, address, and ZIP code
+ROBERT JONES
+
+1 Wages, tips, other compensation
+72,000.00
+2 Federal income tax withheld
+9,500.00
+3 Social security wages
+72,000.00
+4 Social security tax withheld
+4,464.00
+5 Medicare wages and tips
+72,000.00
+6 Medicare tax withheld
+1,044.00
+
+Employee's social security number
+XXX-XX-4321

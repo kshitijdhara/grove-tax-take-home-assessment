@@ -1,0 +1,19 @@
+Form 1099-MISC
+Miscellaneous Income
+2024
+
+PAYER'S name
+CONSULTING CO LLC
+PAYER'S TIN
+55-1234567
+
+RECIPIENT'S name
+ALEX RIVERA
+
+1 Rents
+0.00
+3 Other income
+4,200.00
+
+RECIPIENT'S TIN
+XXX-XX-7890
