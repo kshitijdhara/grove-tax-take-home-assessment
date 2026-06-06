@@ -1,6 +1,6 @@
 export type DocumentType = "W-2" | "1099-NEC" | "1099-INT" | "1099-DIV";
 export type ConfidenceLevel = "high" | "low";
-export type ExtractionMethod = "regex" | "ai";
+export type ExtractionMethod = "regex" | "ai" | "validated";
 
 export interface TaxField {
   box?: string;
@@ -16,6 +16,13 @@ export interface MissingField {
   reason: string;
 }
 
+export interface FieldDisagreement {
+  box?: string;
+  label: string;
+  regexValue: string;
+  aiValue: string;
+}
+
 export interface ExtractionResult {
   documentType: DocumentType;
   taxYear: string;
@@ -23,7 +30,17 @@ export interface ExtractionResult {
   recipient: { name: string; ssn_last4: string };
   fields: TaxField[];
   missingFields?: MissingField[];
+  disagreements?: FieldDisagreement[];
   warning?: string;
+  corrected?: boolean;
   extractionMethod: ExtractionMethod;
   overallConfidence: ConfidenceLevel;
+}
+
+export type ProgressStage = "parsing" | "identifying" | "extracting" | "validating" | "complete";
+
+export interface ExtractionProgressEvent {
+  stage: ProgressStage;
+  result?: ExtractionResult;
+  error?: string;
 }

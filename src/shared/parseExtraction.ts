@@ -3,6 +3,7 @@ import type {
   DocumentType,
   ExtractionMethod,
   ExtractionResult,
+  FieldDisagreement,
   MissingField,
   TaxField,
 } from "@/shared/types";
@@ -20,7 +21,20 @@ function isConfidenceLevel(value: string): value is ConfidenceLevel {
 }
 
 function isExtractionMethod(value: string): value is ExtractionMethod {
-  return value === "regex" || value === "ai";
+  return value === "regex" || value === "ai" || value === "validated";
+}
+
+function parseDisagreement(value: object): FieldDisagreement | null {
+  if (!("label" in value) || typeof value.label !== "string") return null;
+  if (!("regexValue" in value) || typeof value.regexValue !== "string") return null;
+  if (!("aiValue" in value) || typeof value.aiValue !== "string") return null;
+  const disagreement: FieldDisagreement = {
+    label: value.label,
+    regexValue: value.regexValue,
+    aiValue: value.aiValue,
+  };
+  if ("box" in value && typeof value.box === "string") disagreement.box = value.box;
+  return disagreement;
 }
 
 function parseTaxField(value: object): TaxField | null {
@@ -62,6 +76,12 @@ function parseRecipient(value: object): ExtractedData["recipient"] | null {
 function parseStringRecord(value: object): Record<string, string> | null {
   const entries = Object.entries(value);
   if (entries.some(([, v]) => typeof v !== "string")) return null;
+  return Object.fromEntries(entries);
+}
+
+function parseBooleanRecord(value: object): Record<string, boolean> | null {
+  const entries = Object.entries(value);
+  if (entries.some(([, v]) => typeof v !== "boolean")) return null;
   return Object.fromEntries(entries);
 }
 
@@ -115,6 +135,15 @@ export function parseExtractedData(input: object): ExtractedData {
     data.warning = input.warning;
   }
 
+  if ("disagreements" in input && Array.isArray(input.disagreements)) {
+    const disagreements = input.disagreements.flatMap((item) => {
+      if (typeof item !== "object" || item === null) return [];
+      const disagreement = parseDisagreement(item);
+      return disagreement ? [disagreement] : [];
+    });
+    if (disagreements.length > 0) data.disagreements = disagreements;
+  }
+
   return data;
 }
 
@@ -146,8 +175,10 @@ export interface HistoryEntry {
   id: string;
   timestamp: number;
   filename: string;
+  contentHash?: string;
   result: ExtractionResult;
   edits?: Record<string, string>;
+  verified?: Record<string, boolean>;
   clientName?: string;
 }
 
@@ -171,8 +202,17 @@ export function parseHistoryEntry(input: object): HistoryEntry | null {
       if (edits && Object.keys(edits).length > 0) entry.edits = edits;
     }
 
+    if ("verified" in input && typeof input.verified === "object" && input.verified !== null) {
+      const verified = parseBooleanRecord(input.verified);
+      if (verified && Object.keys(verified).length > 0) entry.verified = verified;
+    }
+
     if ("clientName" in input && typeof input.clientName === "string") {
       entry.clientName = input.clientName;
+    }
+
+    if ("contentHash" in input && typeof input.contentHash === "string") {
+      entry.contentHash = input.contentHash;
     }
 
     return entry;
