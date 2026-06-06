@@ -77,6 +77,11 @@ const server = serve({
     "/pdf.worker.min.mjs": () =>
       new Response(pdfWorkerFile, { headers: { "Content-Type": "application/javascript" } }),
 
+    "/health": {
+      GET: () =>
+        Response.json({ status: "ok" }, { headers: { "Cache-Control": "no-store" } }),
+    },
+
     "/api/extract/pdf": {
       async POST(req) {
         const ip = clientIp(req);

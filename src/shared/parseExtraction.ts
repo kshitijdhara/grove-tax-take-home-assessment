@@ -144,6 +144,18 @@ export function parseExtractedData(input: object): ExtractedData {
     if (disagreements.length > 0) data.disagreements = disagreements;
   }
 
+  if ("corrected" in input && input.corrected === true) {
+    data.corrected = true;
+  }
+
+  if ("formTypeWarning" in input && typeof input.formTypeWarning === "string") {
+    data.formTypeWarning = input.formTypeWarning;
+  }
+
+  if ("aiValidationFailed" in input && input.aiValidationFailed === true) {
+    data.aiValidationFailed = true;
+  }
+
   return data;
 }
 

@@ -10,6 +10,7 @@ import { computeOverallConfidence } from "@/shared/confidence";
 import { detectCorrectedForm } from "@/shared/documentFlags";
 import { fieldKey } from "@/shared/extractionKeys";
 import { allFieldsVerified, hasUnresolvedValues } from "@/shared/reviewStatus";
+import { parseExtractionResult, parseHistoryEntry } from "@/shared/parseExtraction";
 import { w2ArithmeticChecks } from "@/shared/w2Arithmetic";
 import type { ExtractionResult } from "@/shared/types";
 
@@ -140,4 +141,48 @@ test("review blocks export when disagreement value unresolved", () => {
   const key = fieldKey(result.fields[0]!);
   expect(hasUnresolvedValues(result, {})).toBe(true);
   expect(allFieldsVerified(result, { [key]: "51,000.00" }, { [key]: true })).toBe(false);
+});
+
+test("parseExtractionResult preserves trust flags", () => {
+  const raw = {
+    documentType: "W-2",
+    taxYear: "2024",
+    payer: { name: "ACME", ein: "12-3456789" },
+    recipient: { name: "JOHN", ssn_last4: "1234" },
+    fields: [{ box: "Box 1", label: "Wages, tips, other compensation", value: "50,000.00", confidence: "high" }],
+    extractionMethod: "regex",
+    overallConfidence: "low",
+    corrected: true,
+    formTypeWarning: "Document appears to be Form 1099-MISC",
+    aiValidationFailed: true,
+    warning: "AI validation failed",
+  };
+
+  const parsed = parseExtractionResult(raw);
+  expect(parsed.corrected).toBe(true);
+  expect(parsed.formTypeWarning).toContain("1099-MISC");
+  expect(parsed.aiValidationFailed).toBe(true);
+  expect(parsed.warning).toBe("AI validation failed");
+});
+
+test("parseHistoryEntry round-trips trust flags on nested result", () => {
+  const entry = parseHistoryEntry({
+    id: "entry-1",
+    timestamp: 1_700_000_000_000,
+    filename: "corrected-w2.pdf",
+    result: {
+      documentType: "W-2",
+      taxYear: "2024",
+      payer: { name: "ACME", ein: "12-3456789" },
+      recipient: { name: "JOHN", ssn_last4: "1234" },
+      fields: [{ box: "Box 1", label: "Wages, tips, other compensation", value: "50,000.00", confidence: "high" }],
+      extractionMethod: "validated",
+      overallConfidence: "low",
+      corrected: true,
+      aiValidationFailed: true,
+    },
+  });
+
+  expect(entry?.result.corrected).toBe(true);
+  expect(entry?.result.aiValidationFailed).toBe(true);
 });

@@ -139,6 +139,9 @@ export function FileUploader({
       });
     });
 
+    let lastDoneIndex = -1;
+    let successCount = 0;
+
     for (let index = 0; index < items.length; index++) {
       const item = items[index];
       if (!item) continue;
@@ -160,6 +163,8 @@ export function FileUploader({
         });
         const contentHash = await hashFileContent(item.file);
         onSuccess?.(result, item.file.name, item.file, contentHash);
+        successCount += 1;
+        lastDoneIndex = index;
         setState((s) => ({
           ...s,
           queue: s.queue.map((q, i) =>
@@ -177,7 +182,22 @@ export function FileUploader({
       }
     }
 
-    setState((s) => ({ ...s, status: "success", activeIndex: items.length - 1 }));
+    setState((s) => {
+      if (successCount === 0) {
+        const firstError = s.queue.find((q) => q.status === "error");
+        return {
+          ...s,
+          status: "error",
+          activeIndex: 0,
+          errorMessage: firstError?.errorMessage ?? "All extractions failed.",
+        };
+      }
+      return {
+        ...s,
+        status: "success",
+        activeIndex: lastDoneIndex >= 0 ? lastDoneIndex : 0,
+      };
+    });
     onBatchComplete?.();
   };
 
@@ -243,7 +263,7 @@ export function FileUploader({
           </div>
         );
       case "success":
-        return activeResult ? (
+        return (
           <div className="file-uploader__panel file-uploader__success">
             <div className="file-uploader__success-header">
               <div className="file-uploader__status-icon" aria-hidden="true">
@@ -259,7 +279,7 @@ export function FileUploader({
                   <button
                     key={item.id}
                     type="button"
-                    className={`file-uploader__queue-tab${index === activeIndex ? " file-uploader__queue-tab--active" : ""}`}
+                    className={`file-uploader__queue-tab${index === activeIndex ? " file-uploader__queue-tab--active" : ""}${item.status === "error" ? " file-uploader__queue-tab--error" : ""}`}
                     onClick={() => setState((s) => ({ ...s, activeIndex: index }))}
                   >
                     {item.file.name}
@@ -267,21 +287,28 @@ export function FileUploader({
                 ))}
               </div>
             )}
-            <ExtractionResultView
-              result={activeResult}
-              pdfFile={activeItem?.file ?? pdfFile ?? null}
-              edits={edits}
-              onEditsChange={onEditsChange}
-              verified={verified}
-              onVerifiedChange={onVerifiedChange}
-              clientName={clientName}
-              onClientNameChange={onClientNameChange}
-            />
+            {activeResult ? (
+              <ExtractionResultView
+                result={activeResult}
+                pdfFile={activeItem?.file ?? pdfFile ?? null}
+                edits={edits}
+                onEditsChange={onEditsChange}
+                verified={verified}
+                onVerifiedChange={onVerifiedChange}
+                clientName={clientName}
+                onClientNameChange={onClientNameChange}
+              />
+            ) : activeItem?.status === "error" ? (
+              <div className="file-uploader__batch-item-error">
+                <p className="file-uploader__status-title">Extraction failed</p>
+                <p className="file-uploader__error-message">{activeItem.errorMessage}</p>
+              </div>
+            ) : null}
             <div className="file-uploader__success-footer">
               <Button variant="ghost" onClick={handleReset}>Upload more</Button>
             </div>
           </div>
-        ) : null;
+        );
       case "error":
         return (
           <div className="file-uploader__panel file-uploader__error-view">
@@ -299,7 +326,7 @@ export function FileUploader({
   };
 
   return (
-    <div className={`file-uploader${status === "success" && activeResult ? " file-uploader--wide" : ""}`}>
+    <div className={`file-uploader${status === "success" && (activeResult || queue.some((q) => q.status === "done")) ? " file-uploader--wide" : ""}`}>
       <input
         ref={inputRef}
         type="file"

@@ -2,7 +2,7 @@ import "./WorkpaperPanel.css";
 import type { HistoryEntry } from "@/shared/parseExtraction";
 import { fieldKey } from "@/shared/extractionKeys";
 import { buildClientRowCsv, clientExportFilename, downloadText } from "@/shared/exportFormats";
-import { entryVerificationSummary } from "@/shared/reviewStatus";
+import { allFieldsVerified, entryVerificationSummary, unverifiedFieldLabels } from "@/shared/reviewStatus";
 
 interface ClientGroup {
   clientName: string;
@@ -48,6 +48,20 @@ function groupByClient(entries: HistoryEntry[]): ClientGroup[] {
   }));
 }
 
+function clientGroupExportReady(entries: HistoryEntry[]): boolean {
+  return entries.every((entry) =>
+    allFieldsVerified(entry.result, entry.edits ?? {}, entry.verified ?? {}),
+  );
+}
+
+function clientGroupExportBlockers(entries: HistoryEntry[]): string[] {
+  return entries.flatMap((entry) =>
+    unverifiedFieldLabels(entry.result, entry.edits ?? {}, entry.verified ?? {}).map(
+      (field) => `${entry.filename} — ${field}`,
+    ),
+  );
+}
+
 interface WorkpaperPanelProps {
   entries: HistoryEntry[];
   activeId?: string | null;
@@ -70,7 +84,9 @@ export function WorkpaperPanel({ entries, activeId, onSelectEntry }: WorkpaperPa
     <section className="workpaper-panel">
       <h2 className="workpaper-panel__title">Client workpapers</h2>
       <div className="workpaper-panel__grid">
-        {groups.map((group) => (
+        {groups.map((group) => {
+          const exportReady = clientGroupExportReady(group.entries);
+          return (
           <article key={group.clientName} className="workpaper-card">
             <header className="workpaper-card__header">
               <h3 className="workpaper-card__name">{group.clientName}</h3>
@@ -110,13 +126,30 @@ export function WorkpaperPanel({ entries, activeId, onSelectEntry }: WorkpaperPa
               <button
                 type="button"
                 className="workpaper-card__export"
-                onClick={() => downloadText(buildClientRowCsv(group.clientName, group.entries), clientExportFilename(group.clientName))}
+                disabled={!exportReady}
+                title={exportReady ? "Export verified client data as CSV" : "Verify every document in this workpaper before export"}
+                onClick={() => {
+                  if (!exportReady) {
+                    const issues = clientGroupExportBlockers(group.entries);
+                    window.alert(
+                      issues.length > 0
+                        ? `Verify all documents before export:\n\n${issues.join("\n")}`
+                        : "Verify all documents in this workpaper before export.",
+                    );
+                    return;
+                  }
+                  downloadText(
+                    buildClientRowCsv(group.clientName, group.entries),
+                    clientExportFilename(group.clientName),
+                  );
+                }}
               >
                 Export client CSV
               </button>
             </footer>
           </article>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

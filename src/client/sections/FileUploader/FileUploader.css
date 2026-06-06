@@ -238,3 +238,16 @@
   border-color: var(--text-accent);
   color: var(--text-accent);
 }
+
+.file-uploader__queue-tab--error {
+  border-color: rgba(255, 69, 58, 0.35);
+  color: var(--error);
+}
+
+.file-uploader__batch-item-error {
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-4);
+  border: 1px solid rgba(255, 69, 58, 0.25);
+  border-radius: var(--radius-md);
+  background: rgba(255, 69, 58, 0.06);
+}

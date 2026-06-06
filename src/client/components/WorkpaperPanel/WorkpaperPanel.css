@@ -127,3 +127,13 @@
 .workpaper-card__export:hover {
   background: var(--accent-subtle);
 }
+
+.workpaper-card__export:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  color: var(--text-tertiary);
+}
+
+.workpaper-card__export:disabled:hover {
+  background: transparent;
+}
