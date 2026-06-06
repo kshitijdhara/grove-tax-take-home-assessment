@@ -1,14 +1,46 @@
 import "./ExtractionResult.css";
-import { useState } from "react";
-import type { ExtractionResult, MissingField, TaxField } from "@/shared/types";
+import { useMemo, useState } from "react";
+import type { DocumentType, ExtractionResult, FieldDisagreement, MissingField, TaxField } from "@/shared/types";
+import { META_KEYS, fieldKey } from "@/shared/extractionKeys";
+import { applyEditsToResult } from "@/shared/resolvedResult";
+import {
+  buildCopyAllText,
+  buildDrakeW2Csv,
+  buildRowCsv,
+  buildVerticalCsv,
+  downloadText,
+  exportFilename,
+  type ExportSignOff,
+} from "@/shared/exportFormats";
+import { allFieldsVerified, reviewKeysForResult, unverifiedLowConfidenceCount, verifiedCount } from "@/shared/reviewStatus";
 import { DocumentHeader } from "./DocumentHeader";
 import { FieldRow } from "./FieldRow";
 import { ExtractionBadge } from "./ExtractionBadge";
+import { PdfViewer } from "../PdfViewer/PdfViewer";
 
-// A field-like shape used to key both extracted and missing fields uniformly.
-interface Keyable { box?: string; label: string; }
-// Null byte separator avoids collisions with box/label values containing "-".
-const editKey = (f: Keyable) => `${f.box ?? ""}\x00${f.label}`;
+type ViewMode = "fields" | "json";
+type ExportPreset = "vertical" | "row" | "drake-w2" | "copy-all";
+
+interface PartyLabels {
+  payerSection: string;
+  recipientSection: string;
+  fieldsSection: string;
+}
+
+function partyLabels(documentType: DocumentType): PartyLabels {
+  if (documentType === "W-2") {
+    return {
+      payerSection: "Employer",
+      recipientSection: "Employee",
+      fieldsSection: "Compensation & Taxes",
+    };
+  }
+  return {
+    payerSection: "Payer",
+    recipientSection: "Recipient",
+    fieldsSection: "Income & Withholding",
+  };
+}
 
 function CopyButton({ json }: { json: string }) {
   const [copied, setCopied] = useState(false);
@@ -38,24 +70,87 @@ function MetaRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SsnRow({ ssn }: { ssn: string }) {
+function MetaFieldRow({
+  label,
+  value,
+  editKeyName,
+  edits,
+  onEdit,
+  verified,
+  onVerifiedChange,
+  monospace,
+}: {
+  label: string;
+  value: string;
+  editKeyName: string;
+  edits: Record<string, string>;
+  onEdit: (key: string, value: string) => void;
+  verified?: boolean;
+  onVerifiedChange?: (verified: boolean) => void;
+  monospace?: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const display = edits[editKeyName] ?? value;
+  if (!display && !editing) return null;
+
   return (
-    <div className="field-row">
-      <span className="field-row__label">SSN</span>
-      <span className={`field-row__value${!ssn ? " field-row__value--absent" : ""}`}>{ssn || "Not present on document"}</span>
+    <div className={`field-row${verified ? " field-row--verified" : ""}`}>
+      {onVerifiedChange && (
+        <label className="field-row__verify">
+          <input
+            type="checkbox"
+            checked={verified ?? false}
+            onChange={(e) => onVerifiedChange(e.target.checked)}
+            aria-label={`Mark ${label} as verified`}
+          />
+        </label>
+      )}
+      <span className="field-row__label">{label}</span>
+      <span className="field-row__value">
+        {editing ? (
+          <input
+            className="field-row__value-input"
+            defaultValue={display}
+            onBlur={(e) => { onEdit(editKeyName, e.target.value.trim()); setEditing(false); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { onEdit(editKeyName, e.currentTarget.value.trim()); setEditing(false); }
+              if (e.key === "Escape") setEditing(false);
+            }}
+            autoFocus
+          />
+        ) : (
+          <span
+            className={`field-row__value-display${edits[editKeyName] ? " field-row__value-display--edited" : ""}${monospace ? " field-row__value-display--mono" : ""}`}
+            onDoubleClick={() => setEditing(true)}
+            title="Double-click to edit"
+          >
+            {display || "—"}
+          </span>
+        )}
+      </span>
     </div>
   );
 }
 
-// Missing fields are known-to-exist boxes regex couldn't find. Let the preparer key the
-// value in directly from their paper copy — it flows into both CSV exports.
-function MissingFieldRow({ field, value, onEnter }: {
+function MissingFieldRow({ field, value, verified, onEnter, onVerifiedChange }: {
   field: MissingField;
   value?: string;
+  verified?: boolean;
   onEnter: (v: string) => void;
+  onVerifiedChange?: (verified: boolean) => void;
 }) {
   return (
-    <div className={`field-row field-row--missing${value ? " field-row--filled" : ""}`}>
+    <div className={`field-row field-row--missing${value ? " field-row--filled" : ""}${verified ? " field-row--verified" : ""}`}>
+      {onVerifiedChange && (
+        <label className="field-row__verify">
+          <input
+            type="checkbox"
+            checked={verified ?? false}
+            onChange={(e) => onVerifiedChange(e.target.checked)}
+            aria-label={`Mark ${field.label} as verified`}
+          />
+        </label>
+      )}
       <span className="field-row__label">
         <span className="field-row__box">{field.box}</span>
         {field.label}
@@ -80,117 +175,84 @@ function WarningBanner({ message }: { message: string }) {
   );
 }
 
-// Resolves the value to export for a field: preparer edit wins over the extracted value.
-function resolved(result: ExtractionResult, edits: Record<string, string>, f: TaxField): string {
-  return edits[editKey(f)] ?? f.value;
+function progressLabel(stage: string): string {
+  switch (stage) {
+    case "parsing": return "Parsing PDF…";
+    case "identifying": return "Identifying document type…";
+    case "extracting": return "Extracting fields…";
+    case "validating": return "Running AI validation…";
+    case "complete": return "Complete";
+    default: return "Processing…";
+  }
 }
 
-function csvEscape(v: string): string {
-  return `"${v.replace(/"/g, '""')}"`;
+function canBulkVerifyAll(result: ExtractionResult): boolean {
+  const hasDisagreements = (result.disagreements?.length ?? 0) > 0;
+  const hasMissing = (result.missingFields?.length ?? 0) > 0;
+  const hasLowConfidence = result.fields.some((field) => field.confidence === "low");
+  return !hasDisagreements && !hasMissing && !hasLowConfidence;
 }
-
-function triggerDownload(csv: string, filename: string) {
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function baseFilename(result: ExtractionResult): string {
-  return `${result.documentType}_${result.taxYear}_${result.payer.name.replace(/\s+/g, "_") || "document"}`;
-}
-
-// Human-readable vertical CSV: one row per field, with an Edited flag and manual entries.
-function DownloadCsvButton({ result, edits }: { result: ExtractionResult; edits: Record<string, string> }) {
-  const handleDownload = () => {
-    const missingRows = (result.missingFields ?? [])
-      .map((mf) => {
-        const v = edits[editKey(mf)];
-        return v ? [mf.box, mf.label, v, "manual", "yes"] : null;
-      })
-      .filter((r): r is string[] => r !== null);
-
-    const rows: string[][] = [
-      ["Document Type", result.documentType],
-      ["Tax Year", result.taxYear],
-      ["Payer Name", result.payer.name],
-      ["Payer EIN", result.payer.ein],
-      ["Recipient Name", result.recipient.name],
-      ["Recipient SSN (last 4)", result.recipient.ssn_last4],
-      [],
-      ["Box", "Label", "Value", "Confidence", "Edited"],
-      ...result.fields.map((f) => {
-        const override = edits[editKey(f)];
-        return [f.box ?? "", f.label, override ?? f.value, f.confidence, override ? "yes" : ""];
-      }),
-      ...missingRows,
-    ];
-    const csv = rows.map((r) => r.map(csvEscape).join(",")).join("\n");
-    triggerDownload(csv, `${baseFilename(result)}.csv`);
-  };
-  return <button className="download-csv-btn" onClick={handleDownload}>Download CSV</button>;
-}
-
-// Import-friendly "one row per form" CSV: header is column names, single data row.
-// This is the shape downstream tax software import mappers expect (columns = fields).
-function ExportRowButton({ result, edits }: { result: ExtractionResult; edits: Record<string, string> }) {
-  const handleDownload = () => {
-    const header = [
-      "Document Type", "Tax Year", "Payer Name", "Payer EIN", "Recipient Name", "Recipient SSN",
-      ...result.fields.map((f) => (f.box ? `${f.box} ${f.label}` : f.label)),
-      ...(result.missingFields ?? [])
-        .filter((mf) => edits[editKey(mf)])
-        .map((mf) => `${mf.box} ${mf.label}`),
-    ];
-    const row = [
-      result.documentType, result.taxYear, result.payer.name, result.payer.ein,
-      result.recipient.name, result.recipient.ssn_last4,
-      ...result.fields.map((f) => resolved(result, edits, f)),
-      ...(result.missingFields ?? [])
-        .map((mf) => edits[editKey(mf)])
-        .filter((v): v is string => Boolean(v)),
-    ];
-    const csv = [header.map(csvEscape).join(","), row.map(csvEscape).join(",")].join("\n");
-    triggerDownload(csv, `${baseFilename(result)}_row.csv`);
-  };
-  return (
-    <button className="download-csv-btn" onClick={handleDownload} title="One row per form — columns are fields, ready for import mapping">
-      Export row
-    </button>
-  );
-}
-
-type ViewMode = "fields" | "json";
 
 interface ExtractionResultViewProps {
   result: ExtractionResult;
+  pdfFile?: File | null;
   edits?: Record<string, string>;
   onEditsChange?: (edits: Record<string, string>) => void;
+  verified?: Record<string, boolean>;
+  onVerifiedChange?: (verified: Record<string, boolean>) => void;
   clientName?: string;
   onClientNameChange?: (name: string) => void;
 }
 
 export function ExtractionResultView({
   result,
+  pdfFile = null,
   edits: editsProp,
   onEditsChange,
+  verified: verifiedProp,
+  onVerifiedChange,
   clientName,
   onClientNameChange,
 }: ExtractionResultViewProps) {
-  const { documentType, taxYear, payer, recipient, fields, extractionMethod } = result;
+  const { documentType, taxYear, payer, recipient, fields } = result;
+  const labels = partyLabels(documentType);
   const [view, setView] = useState<ViewMode>("fields");
   const [localEdits, setLocalEdits] = useState<Record<string, string>>({});
+  const [localVerified, setLocalVerified] = useState<Record<string, boolean>>({});
+  const [selectedSource, setSelectedSource] = useState<string | undefined>();
+  const [exportPreset, setExportPreset] = useState<ExportPreset>("row");
+  const [exportOverride, setExportOverride] = useState(false);
+  const [preparerName, setPreparerName] = useState("");
 
-  // Controlled when a parent supplies edits (persisted to history); local otherwise.
   const edits = editsProp ?? localEdits;
+  const verified = verifiedProp ?? localVerified;
+
   const setEdit = (key: string, value: string) => {
     const next = { ...edits };
     if (value) next[key] = value; else delete next[key];
     if (onEditsChange) onEditsChange(next); else setLocalEdits(next);
   };
+
+  const setVerified = (key: string, value: boolean) => {
+    const next = { ...verified, [key]: value };
+    if (onVerifiedChange) onVerifiedChange(next); else setLocalVerified(next);
+  };
+
+  const disagreementByKey = useMemo(() => {
+    const map = new Map<string, FieldDisagreement>();
+    for (const disagreement of result.disagreements ?? []) {
+      map.set(fieldKey(disagreement), disagreement);
+    }
+    return map;
+  }, [result.disagreements]);
+
+  const mergedJson = useMemo(() => JSON.stringify(applyEditsToResult(result, edits), null, 2), [result, edits]);
+
+  const reviewComplete = allFieldsVerified(result, verified);
+  const reviewTotal = reviewKeysForResult(result).length;
+  const reviewDone = verifiedCount(result, verified);
+  const lowConfidenceRemaining = unverifiedLowConfidenceCount(result, verified);
+  const bulkVerifyAllowed = canBulkVerifyAll(result);
 
   const maskedSsn = recipient.ssn_last4 === "APPLIED FOR"
     ? "Applied For"
@@ -198,14 +260,60 @@ export function ExtractionResultView({
     ? `••• ••-${recipient.ssn_last4}`
     : "";
 
+  const buildSignOff = (): ExportSignOff | undefined => {
+    const name = preparerName.trim();
+    if (!name) return undefined;
+    return {
+      preparerName: name,
+      exportedAt: new Date().toISOString(),
+      extractionMethod: result.extractionMethod,
+    };
+  };
+
+  const exportContext = { edits, verified, signOff: buildSignOff() };
+
+  const handleExport = async () => {
+    if (!reviewComplete && !exportOverride) return;
+
+    switch (exportPreset) {
+      case "vertical":
+        downloadText(buildVerticalCsv(result, exportContext), exportFilename(result, ".csv"));
+        break;
+      case "row":
+        downloadText(buildRowCsv(result, exportContext), exportFilename(result, "_row.csv"));
+        break;
+      case "drake-w2":
+        downloadText(buildDrakeW2Csv(result, exportContext), exportFilename(result, "_drake_w2.csv"));
+        break;
+      case "copy-all":
+        await navigator.clipboard.writeText(buildCopyAllText(result, exportContext));
+        break;
+      default:
+        break;
+    }
+  };
+
+  const renderField = (field: TaxField) => {
+    const key = fieldKey(field);
+    return (
+      <FieldRow
+        key={key}
+        field={field}
+        editedValue={edits[key]}
+        verified={verified[key]}
+        disagreement={disagreementByKey.get(key)}
+        showDisagreement={disagreementByKey.has(key)}
+        onEdit={(v) => setEdit(key, v)}
+        onVerifiedChange={(v) => setVerified(key, v)}
+        onSourceSelect={setSelectedSource}
+      />
+    );
+  };
+
   return (
     <div className="extraction-result">
       <div className="extraction-result__header-row">
-        <DocumentHeader
-          documentType={documentType}
-          taxYear={taxYear}
-          payerName={payer.name}
-        />
+        <DocumentHeader documentType={documentType} taxYear={taxYear} payerName={payer.name} />
         <div className="extraction-result__view-toggle">
           <button
             className={`view-toggle__btn${view === "fields" ? " view-toggle__btn--active" : ""}`}
@@ -236,66 +344,177 @@ export function ExtractionResultView({
         </div>
       )}
 
+      {result.corrected && (
+        <WarningBanner message="CORRECTED / VOID / AMENDED form detected — confirm you are using final amounts." />
+      )}
+
       {result.warning && <WarningBanner message={result.warning} />}
 
+      {result.disagreements && result.disagreements.length > 0 && (
+        <WarningBanner
+          message={`${result.disagreements.length} field(s) disagree between pattern matching and AI. Pick the correct value for each before export.`}
+        />
+      )}
+
+      {reviewTotal > 0 && (
+        <div className="extraction-result__review-bar">
+          <span>Review progress: {reviewDone}/{reviewTotal} fields verified</span>
+          {lowConfidenceRemaining > 0 && (
+            <span className="extraction-result__review-hint">{lowConfidenceRemaining} need attention</span>
+          )}
+          {!reviewComplete && bulkVerifyAllowed && onVerifiedChange && (
+            <button
+              type="button"
+              className="extraction-result__review-all"
+              onClick={() => {
+                const next = Object.fromEntries(reviewKeysForResult(result).map((key) => [key, true]));
+                onVerifiedChange({ ...verified, ...next });
+              }}
+            >
+              Mark all verified
+            </button>
+          )}
+        </div>
+      )}
+
       {view === "fields" ? (
-        <div className="extraction-result__fields">
-          <SectionHeader label="Document" />
-          <MetaRow label="Document Type" value={documentType} />
-          <MetaRow label="Tax Year" value={taxYear} />
+        <div className="extraction-result__split">
+          <PdfViewer file={pdfFile ?? null} highlightText={selectedSource} />
+          <div className="extraction-result__panel">
+            <div className="extraction-result__fields">
+              <SectionHeader label="Document" />
+              <MetaRow label="Document Type" value={documentType} />
+              <MetaFieldRow
+                label="Tax Year"
+                value={taxYear}
+                editKeyName={META_KEYS.taxYear}
+                edits={edits}
+                onEdit={setEdit}
+                verified={verified[META_KEYS.taxYear]}
+                onVerifiedChange={onVerifiedChange ? (v) => setVerified(META_KEYS.taxYear, v) : undefined}
+              />
 
-          <SectionHeader label="Employer" />
-          <MetaRow label="Name" value={payer.name} />
-          <MetaRow label="EIN" value={payer.ein} />
+              <SectionHeader label={labels.payerSection} />
+              <MetaFieldRow
+                label="Name"
+                value={payer.name}
+                editKeyName={META_KEYS.payerName}
+                edits={edits}
+                onEdit={setEdit}
+                verified={verified[META_KEYS.payerName]}
+                onVerifiedChange={onVerifiedChange ? (v) => setVerified(META_KEYS.payerName, v) : undefined}
+              />
+              <MetaFieldRow
+                label="EIN"
+                value={payer.ein}
+                editKeyName={META_KEYS.payerEin}
+                edits={edits}
+                onEdit={setEdit}
+                verified={verified[META_KEYS.payerEin]}
+                onVerifiedChange={onVerifiedChange ? (v) => setVerified(META_KEYS.payerEin, v) : undefined}
+                monospace
+              />
 
-          <SectionHeader label="Employee" />
-          <MetaRow label="Name" value={recipient.name} />
-          <SsnRow ssn={maskedSsn} />
+              <SectionHeader label={labels.recipientSection} />
+              <MetaFieldRow
+                label="Name"
+                value={recipient.name}
+                editKeyName={META_KEYS.recipientName}
+                edits={edits}
+                onEdit={setEdit}
+                verified={verified[META_KEYS.recipientName]}
+                onVerifiedChange={onVerifiedChange ? (v) => setVerified(META_KEYS.recipientName, v) : undefined}
+              />
+              <MetaFieldRow
+                label="SSN (last 4)"
+                value={maskedSsn}
+                editKeyName={META_KEYS.recipientSsn}
+                edits={edits}
+                onEdit={setEdit}
+                verified={verified[META_KEYS.recipientSsn]}
+                onVerifiedChange={onVerifiedChange ? (v) => setVerified(META_KEYS.recipientSsn, v) : undefined}
+                monospace
+              />
 
-          {fields.length > 0 && (
-            <>
-              <SectionHeader label="Compensation & Taxes" />
-              {fields.map((field) => (
-                <FieldRow
-                  key={editKey(field)}
-                  field={field}
-                  editedValue={edits[editKey(field)]}
-                  onEdit={(v) => setEdit(editKey(field), v)}
-                />
-              ))}
-            </>
-          )}
+              {fields.length > 0 && (
+                <>
+                  <SectionHeader label={labels.fieldsSection} />
+                  {fields.map(renderField)}
+                </>
+              )}
 
-          {result.missingFields && result.missingFields.length > 0 && (
-            <>
-              <SectionHeader label="Not Found — Enter Manually" />
-              {result.missingFields.map((f) => (
-                <MissingFieldRow
-                  key={editKey(f)}
-                  field={f}
-                  value={edits[editKey(f)]}
-                  onEnter={(v) => setEdit(editKey(f), v)}
-                />
-              ))}
-            </>
-          )}
+              {result.missingFields && result.missingFields.length > 0 && (
+                <>
+                  <SectionHeader label="Not Found — Enter Manually" />
+                  {result.missingFields.map((f) => (
+                    <MissingFieldRow
+                      key={fieldKey(f)}
+                      field={f}
+                      value={edits[fieldKey(f)]}
+                      verified={verified[fieldKey(f)]}
+                      onEnter={(v) => setEdit(fieldKey(f), v)}
+                      onVerifiedChange={(v) => setVerified(fieldKey(f), v)}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       ) : (
         <div className="extraction-result__json-wrapper">
-          <CopyButton json={JSON.stringify(result, null, 2)} />
-          <pre className="extraction-result__json">
-            {JSON.stringify(result, null, 2)}
-          </pre>
+          <CopyButton json={mergedJson} />
+          <pre className="extraction-result__json">{mergedJson}</pre>
         </div>
       )}
 
       <div className="extraction-result__footer">
         <div className="extraction-result__export-group">
-          <DownloadCsvButton result={result} edits={edits} />
-          <ExportRowButton result={result} edits={edits} />
+          <input
+            className="export-preparer-input"
+            value={preparerName}
+            onChange={(e) => setPreparerName(e.target.value)}
+            placeholder="Preparer name (export sign-off)"
+            aria-label="Preparer name for export sign-off"
+          />
+          <select
+            className="export-preset-select"
+            value={exportPreset}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === "vertical" || value === "row" || value === "drake-w2" || value === "copy-all") {
+                setExportPreset(value);
+              }
+            }}
+            aria-label="Export format"
+          >
+            <option value="row">Export row (import mapping)</option>
+            <option value="vertical">Download CSV (review sheet)</option>
+            {documentType === "W-2" && <option value="drake-w2">Drake W-2 field order</option>}
+            <option value="copy-all">Copy all (tab-separated)</option>
+          </select>
+          <button
+            className="download-csv-btn"
+            onClick={handleExport}
+            disabled={!reviewComplete && !exportOverride}
+            title={reviewComplete ? "Export reviewed data" : "Verify all fields before export"}
+          >
+            Export
+          </button>
+          {!reviewComplete && (
+            <button
+              type="button"
+              className="download-csv-btn download-csv-btn--override"
+              onClick={() => setExportOverride(true)}
+            >
+              Export anyway
+            </button>
+          )}
         </div>
-        <ExtractionBadge method={extractionMethod} />
+        <ExtractionBadge result={result} />
       </div>
     </div>
   );
 }
+
+export { progressLabel };

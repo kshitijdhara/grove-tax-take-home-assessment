@@ -1,7 +1,8 @@
 import "./HistoryPanel.css";
 import type { HistoryEntry } from "@/shared/parseExtraction";
 import { ExtractionResultView } from "../ExtractionResult/ExtractionResult";
-import { useState } from "react";
+import { loadPdfBlob } from "../../storage/pdfStore";
+import { useEffect, useState } from "react";
 
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
@@ -18,8 +19,16 @@ function relativeTime(ts: number): string {
 function HistoryModal({ entry, onClose, onUpdateEntry }: {
   entry: HistoryEntry;
   onClose: () => void;
-  onUpdateEntry: (id: string, patch: Partial<Pick<HistoryEntry, "edits" | "clientName">>) => void;
+  onUpdateEntry: (id: string, patch: Partial<Pick<HistoryEntry, "edits" | "verified" | "clientName">>) => void;
 }) {
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    loadPdfBlob(entry.id)
+      .then(setPdfFile)
+      .catch(() => setPdfFile(null));
+  }, [entry.id]);
+
   return (
     <div className="history-modal__backdrop" onClick={onClose}>
       <div className="history-modal__content" onClick={(e) => e.stopPropagation()}>
@@ -29,8 +38,11 @@ function HistoryModal({ entry, onClose, onUpdateEntry }: {
         </div>
         <ExtractionResultView
           result={entry.result}
+          pdfFile={pdfFile}
           edits={entry.edits}
           onEditsChange={(edits) => onUpdateEntry(entry.id, { edits })}
+          verified={entry.verified}
+          onVerifiedChange={(verified) => onUpdateEntry(entry.id, { verified })}
           clientName={entry.clientName}
           onClientNameChange={(clientName) => onUpdateEntry(entry.id, { clientName })}
         />
@@ -42,23 +54,35 @@ function HistoryModal({ entry, onClose, onUpdateEntry }: {
 interface HistoryPanelProps {
   entries: HistoryEntry[];
   onClear: () => void;
-  onUpdateEntry: (id: string, patch: Partial<Pick<HistoryEntry, "edits" | "clientName">>) => void;
+  onUpdateEntry: (id: string, patch: Partial<Pick<HistoryEntry, "edits" | "verified" | "clientName">>) => void;
+  onSelectEntry?: (id: string) => void;
 }
 
-export function HistoryPanel({ entries, onClear, onUpdateEntry }: HistoryPanelProps) {
+export function HistoryPanel({ entries, onClear, onUpdateEntry, onSelectEntry }: HistoryPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (entries.length === 0) return null;
 
-  // Derive the selected entry from the live list so edits made in the modal reflect immediately.
   const selected = entries.find((e) => e.id === selectedId) ?? null;
+
+  const openEntry = (id: string) => {
+    if (onSelectEntry) onSelectEntry(id);
+    else setSelectedId(id);
+  };
 
   return (
     <>
       <section className="history-panel">
         <div className="history-panel__header">
-          <h2 className="history-panel__title">Recent extractions</h2>
-          <button className="history-panel__clear" onClick={onClear}>Clear</button>
+          <h2 className="history-panel__title">Recent</h2>
+          <button
+            className="history-panel__clear"
+            onClick={() => {
+              if (window.confirm("Clear all extraction history? This cannot be undone.")) onClear();
+            }}
+          >
+            Clear
+          </button>
         </div>
         <ul className="history-panel__list">
           {entries.map((entry) => {
@@ -66,7 +90,7 @@ export function HistoryPanel({ entries, onClear, onUpdateEntry }: HistoryPanelPr
             const primaryLabel = entry.clientName || entry.result.payer.name || entry.filename;
             return (
               <li key={entry.id}>
-                <button className="history-card" onClick={() => setSelectedId(entry.id)}>
+                <button className="history-card" onClick={() => openEntry(entry.id)}>
                   <span className="history-card__badge">{entry.result.documentType}</span>
                   <div className="history-card__meta">
                     <span className="history-card__payer">{primaryLabel}</span>
@@ -90,7 +114,7 @@ export function HistoryPanel({ entries, onClear, onUpdateEntry }: HistoryPanelPr
         </ul>
       </section>
 
-      {selected && (
+      {selected && !onSelectEntry && (
         <HistoryModal entry={selected} onClose={() => setSelectedId(null)} onUpdateEntry={onUpdateEntry} />
       )}
     </>

@@ -1,6 +1,6 @@
 import type { TaxField } from "@/shared/types";
 import type { RegexExtractionResult } from "./types";
-import { MONEY, findMoney, findText } from "./helpers";
+import { MONEY, findMoney, findText, moneyField } from "./helpers";
 
 const REQUIRED_COUNT = 4;
 
@@ -61,12 +61,13 @@ export function extract1099INT(text: string): RegexExtractionResult {
   const required = [interestIncome, fedTax, payerEin, taxYear];
   const requiredFieldsFound = required.filter(Boolean).length;
 
-  const fields: TaxField[] = [];
-  if (interestIncome) fields.push({ box: "Box 1", label: "Interest income", value: interestIncome, confidence: "high" });
-  if (earlyWithdrawal) fields.push({ box: "Box 2", label: "Early withdrawal penalty", value: earlyWithdrawal, confidence: "high" });
-  if (usBondInterest) fields.push({ box: "Box 3", label: "Interest on U.S. Savings Bonds", value: usBondInterest, confidence: "high" });
-  if (fedTax) fields.push({ box: "Box 4", label: "Federal income tax withheld", value: fedTax, confidence: "high" });
-  if (taxExemptInterest) fields.push({ box: "Box 8", label: "Tax-exempt interest", value: taxExemptInterest, confidence: "high" });
+  const fields: TaxField[] = [
+    moneyField(text, "Box 1", "Interest income", interestIncome),
+    moneyField(text, "Box 2", "Early withdrawal penalty", earlyWithdrawal),
+    moneyField(text, "Box 3", "Interest on U.S. Savings Bonds", usBondInterest),
+    moneyField(text, "Box 4", "Federal income tax withheld", fedTax),
+    moneyField(text, "Box 8", "Tax-exempt interest", taxExemptInterest),
+  ].filter((field): field is TaxField => field !== null);
 
   return {
     documentType: "1099-INT",

@@ -1,16 +1,18 @@
 {
-  "name": "bun-react-template",
+  "name": "grove-tax-extractor",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "bun --hot src/server/index.ts",
     "build": "bun build ./src/client/index.html --outdir=dist --sourcemap --target=browser --minify --define:process.env.NODE_ENV='\"production\"' --env='BUN_PUBLIC_*'",
-    "start": "NODE_ENV=production bun src/server/index.ts"
+    "start": "NODE_ENV=production bun src/server/index.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
     "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^6.0.227",
     "react": "^19",
     "react-dom": "^19",
     "react-icons": "^5.6.0",

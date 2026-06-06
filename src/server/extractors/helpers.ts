@@ -71,3 +71,22 @@ export function captureContext(text: string, rawValue: string, windowChars = 100
   }
   return "";
 }
+
+export function moneyField(
+  text: string,
+  box: string,
+  label: string,
+  raw: string | null,
+  confidence: TaxField["confidence"] = "high"
+): TaxField | null {
+  const value = formatMoney(raw);
+  if (!value) return null;
+  const sourceText = captureContext(text, raw ?? "");
+  return {
+    box,
+    label,
+    value,
+    confidence,
+    ...(sourceText ? { sourceText } : {}),
+  };
+}

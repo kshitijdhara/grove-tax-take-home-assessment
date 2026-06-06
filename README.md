@@ -10,9 +10,9 @@ Upload a tax document (W-2, 1099-NEC, 1099-INT, 1099-DIV), get back structured, 
 
 ## TL;DR for the person with 90 seconds
 
-I built a hybrid extraction pipeline: **regex first (free, ~10ms), Claude as a fallback (paid, slower), and arithmetic sanity checks on top.** Then I spent most of my energy on the thing the brief actually cares about — **trust**: every value is traceable to the source text, every value is editable before it leaves the tool, and nothing fails silently. The badges don't lie, the missing fields aren't hidden, and the AI is treated like a brilliant intern whose work you still check.
+I built a hybrid extraction pipeline: **regex first (free, ~10ms), Claude Haiku validation in parallel when an API key is present, and Sonnet vision for scanned PDFs.** Then I spent most of my energy on the thing the brief actually cares about — **trust**: every value is traceable to the source text, disagreements show both pattern and AI values side-by-side, every value is editable and reviewable before export, and nothing fails silently. The badges don't lie, the missing fields aren't hidden, and the AI is treated like a brilliant intern whose work you still check.
 
-What I consciously did **not** build: multi-document client workpapers with income roll-ups, auth, and a real database. Those are the next layer, and I'll tell you exactly how I'd build them rather than pretend a weekend closes them.
+What I consciously did **not** build in v1: auth, multi-user tenancy, and a real server-side database. Those are the next layer. What **is** built: client workpapers with income roll-ups, batch upload, PDF persistence in IndexedDB, dedup by content hash, ephemeral mode, and export sign-off with preparer name + timestamp.
 
 If you read one section, read **[Trust: the whole point](#trust-the-whole-point)**.
 
@@ -69,17 +69,15 @@ PDF ───▶│  parsePdf   │  pdf-parse v2 → raw text
         ┌─────────────┐
         │ regex extract│  layout-strategy engine, ~10ms, free
         └──────┬──────┘
-               │  confidence = required fields found / total
-               │
-      score ≥ 0.70 ──▶ "Auto-verified"  (then arithmetic checks may downgrade individual boxes)
-               │
-      score < 0.70 ──▶ Claude Haiku fallback ──▶ "Needs review"
+               │  (parallel when API key present)
+               ▼
+        Claude Haiku validation ──▶ merge + disagreement flags
                               │ on failure
                               ▼
-                       partial regex result + visible warning banner
+                       partial regex result + warning banner
 ```
 
-The shape of this matters: **cost and risk both increase as you move down.** Regex is free and runs always. Haiku is cheap and runs sometimes. Sonnet Vision is expensive and runs only when there's literally no text to read. The pipeline spends money in proportion to how hard the document is.
+Regex and Haiku validation run **in parallel** when an API key is present — latency is dominated by the slower path, not the sum. The shape still matters: **cost and risk both increase as you move down.** Regex is free and runs always. Haiku is cheap and runs on every text PDF when configured. Sonnet Vision is expensive and runs only when there's literally no text to read.
 
 ---
 
@@ -92,8 +90,8 @@ One runtime for server, bundler, test runner, and `.env` loading. `Bun.serve()` 
 This is the load-bearing decision, so here's the actual math. At a firm's volume — say a few thousand W-2s a season — calling an LLM for *every* document is **$0.50–$2.00 each** depending on length. Regex is **$0.00 and ~10ms**, and it nails ~80% of clean digital PDFs. So:
 
 - **Regex handles the common case** for free.
-- **Claude handles the long tail** — messy layouts, scanned images — where regex's confidence drops below 0.70.
-- **AI spend scales with document difficulty, not document count.** That's the whole game.
+- **Claude Haiku validates every text PDF in parallel** when an API key is present — disagreements are surfaced side-by-side for human resolution.
+- **Claude Vision handles scanned/photo PDFs** where regex has no text to read.
 
 **Tradeoff:** regex's failure mode is nasty. It doesn't fail loudly — it confidently returns a *plausible-but-wrong* value. Which is exactly why the next two decisions exist.
 

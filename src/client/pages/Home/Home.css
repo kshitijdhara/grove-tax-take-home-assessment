@@ -2,19 +2,28 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: var(--sp-8) var(--sp-4);
-  gap: var(--sp-8);
+  padding: var(--sp-6) var(--sp-4);
+  gap: var(--sp-6);
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.home__header-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--sp-4);
 }
 
 .home__header {
-  text-align: center;
+  text-align: left;
 }
 
 .home__title {
-  margin: 0 0 var(--sp-3);
-  font-size: 30px;
+  margin: 0 0 var(--sp-2);
+  font-size: 28px;
   font-weight: var(--font-weight-bold);
   color: var(--text-primary);
   letter-spacing: -0.5px;
@@ -25,10 +34,94 @@
   margin: 0;
   font-size: 15px;
   color: var(--text-secondary);
+  max-width: 640px;
+}
+
+.home__ephemeral-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.home__notice {
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--accent-subtle);
+  color: var(--text-accent);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+
+.home__layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--sp-6);
+  align-items: start;
+}
+
+.home__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  position: sticky;
+  top: var(--sp-4);
+}
+
+.home__upload-toggle {
+  width: 100%;
+  padding: var(--sp-3);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-accent);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.home__upload-toggle:hover {
+  background: var(--accent-subtle);
+}
+
+.home__main {
+  min-width: 0;
+}
+
+.home__detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--sp-4);
+}
+
+.home__detail-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.home__detail-back {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .home__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .home__sidebar {
+    position: static;
+  }
 }
 
 @media (min-width: 640px) {
   .home__title {
-    font-size: 38px;
+    font-size: 34px;
   }
 }

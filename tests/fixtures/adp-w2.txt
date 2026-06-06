@@ -1,0 +1,53 @@
+Form W-2 Wage and Tax Statement 2024
+Copy B — To Be Filed With Employee's FEDERAL Tax Return
+Copy 2 — To Be Filed With Employee's State Income Tax Return
+Copy C — For EMPLOYEE'S RECORDS
+
+a Employer's name, address, and ZIP code
+ACME INDUSTRIES INC
+123 MAIN ST
+ANYTOWN CA 90210
+
+b Employer identification number (EIN)
+98-7654321
+
+e Employee's name, address, and ZIP code
+JANE DOE
+456 OAK AVE
+ANYTOWN CA 90210
+
+1 Wages, tips, other compensation
+14 194 65
+2 Federal income tax withheld
+1 850 00
+3 Social security wages
+14 194 65
+4 Social security tax withheld
+879 67
+5 Medicare wages and tips
+14 194 65
+6 Medicare tax withheld
+205 82
+16 State wages, tips, etc.
+14 194 65
+17 State income tax
+892 45
+
+d Control number
+0001234567
+
+f Employee's social security number
+XXX-XX-5678
+
+15 State
+CA
+
+Employer's state ID number
+123-4567-8
+
+Form W-2 Wage and Tax Statement 2024
+Copy B — To Be Filed With Employee's FEDERAL Tax Return
+14 194 65
+1 Wages, tips, other compensation
+14 194 65
+3 Social security wages

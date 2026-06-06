@@ -1,6 +1,6 @@
 import type { TaxField } from "@/shared/types";
 import type { RegexExtractionResult } from "./types";
-import { MONEY, findMoney, findText } from "./helpers";
+import { MONEY, findMoney, findText, moneyField } from "./helpers";
 
 const REQUIRED_COUNT = 4;
 
@@ -68,13 +68,14 @@ export function extract1099DIV(text: string): RegexExtractionResult {
   const required = [totalOrdinaryDiv, qualifiedDiv, totalCapGain, taxYear];
   const requiredFieldsFound = required.filter(Boolean).length;
 
-  const fields: TaxField[] = [];
-  if (totalOrdinaryDiv) fields.push({ box: "Box 1a", label: "Total ordinary dividends", value: totalOrdinaryDiv, confidence: "high" });
-  if (qualifiedDiv) fields.push({ box: "Box 1b", label: "Qualified dividends", value: qualifiedDiv, confidence: "high" });
-  if (totalCapGain) fields.push({ box: "Box 2a", label: "Total capital gain distributions", value: totalCapGain, confidence: "high" });
-  if (unrecapturedSec1250) fields.push({ box: "Box 2b", label: "Unrecaptured section 1250 gain", value: unrecapturedSec1250, confidence: "high" });
-  if (fedTax) fields.push({ box: "Box 4", label: "Federal income tax withheld", value: fedTax, confidence: "high" });
-  if (section199A) fields.push({ box: "Box 5", label: "Section 199A dividends", value: section199A, confidence: "high" });
+  const fields: TaxField[] = [
+    moneyField(text, "Box 1a", "Total ordinary dividends", totalOrdinaryDiv),
+    moneyField(text, "Box 1b", "Qualified dividends", qualifiedDiv),
+    moneyField(text, "Box 2a", "Total capital gain distributions", totalCapGain),
+    moneyField(text, "Box 2b", "Unrecaptured section 1250 gain", unrecapturedSec1250),
+    moneyField(text, "Box 4", "Federal income tax withheld", fedTax),
+    moneyField(text, "Box 5", "Section 199A dividends", section199A),
+  ].filter((field): field is TaxField => field !== null);
 
   return {
     documentType: "1099-DIV",

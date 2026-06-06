@@ -19,13 +19,20 @@ import { MONEY, findMoney, findText, formatMoney, captureContext } from "./helpe
 // Amounts written as space-separated digits: "14 194 65" → "14,194.65"
 // Common in multi-copy payroll layouts where commas would confuse column alignment.
 function findSpaceSeparatedAmount(text: string, labelPattern: string): string | null {
-  const re = new RegExp(
-    `${labelPattern}[^\\d]{0,80}(\\d{1,3})\\s+(\\d{3})\\s+(\\d{2})(?!\\d)`,
-    "i"
+  const tryMatch = (pattern: RegExp): string | null => {
+    const match = text.match(pattern);
+    if (!match) return null;
+    if (match[1] && match[2] && match[3]) return `${match[1]},${match[2]}.${match[3]}`;
+    if (match[1] && match[2] && !match[3]) return `${match[1]}.${match[2]}`;
+    return null;
+  };
+
+  return (
+    tryMatch(new RegExp(`${labelPattern}[^\\d]{0,80}(\\d{1,3})\\s+(\\d{3})\\s+(\\d{2})(?!\\d)`, "i")) ??
+    tryMatch(new RegExp(`${labelPattern}[^\\d]{0,80}(\\d{1,5})\\s+(\\d{2})(?!\\d)`, "i")) ??
+    tryMatch(new RegExp(`${labelPattern}[^\\n]*\\n\\s*(\\d{1,3})\\s+(\\d{3})\\s+(\\d{2})(?!\\d)`, "i")) ??
+    tryMatch(new RegExp(`${labelPattern}[^\\n]*\\n\\s*(\\d{1,5})\\s+(\\d{2})(?!\\d)`, "i"))
   );
-  const m = text.match(re);
-  if (m?.[1] && m[2] && m[3]) return `${m[1]},${m[2]}.${m[3]}`;
-  return null;
 }
 
 // Finds the last monetary amount within `lookback` characters BEFORE a label.
@@ -210,6 +217,7 @@ export function extractW2(text: string): RegexExtractionResult {
       text,
       /employee[''s]*\s+first\s+name[^\n]*\n+([A-Z][a-zA-Z\-]+(?:\s+[A-Z][a-zA-Z\-]*){1,3})/i,
       /e\/f\s+employee[''s]*\s+name[^\n]*\n+([^\n]{2,60})/i,
+      /employee[''s]*\s+name[,\s]+address[^\n]*\n+([^\n]{2,60})/i,
       /([A-Z]{2,}(?:\s+[A-Z]{2,}){2,3})\n\d+\.\d{2}/,
       /(?!APPLIED\s+FOR\b)([A-Z]{3,}\s+[A-Z]{3,})\n\d+\.\d{2}/
     ) ?? "";
@@ -239,6 +247,7 @@ export function extractW2(text: string): RegexExtractionResult {
   const wagesFromPatterns =
     findMoney(text, /Reported\s+W-?2\s+Wages[^\d]*(?:0\.00\s+)?(\d+(?:,\d{3})*\.\d{2})/i) ??
     findSpaceSeparatedAmount(text, "Box\\s+1\\s+of\\s+W-?2") ??
+    findSpaceSeparatedAmount(text, "1\\s+wages[,\\s]+tips[,\\s]+other\\s+comp") ??
     findMoney(
       text,
       new RegExp(`1\\s+wages[,\\s]+tips[,\\s]+other\\s+comp\\w*[^\\d\\n]{0,80}${MONEY}`, "i"),
@@ -246,7 +255,9 @@ export function extractW2(text: string): RegexExtractionResult {
       new RegExp(`box\\s*1\\b[^a-z\\d]{0,30}${MONEY}`, "i")
     );
 
-  const fedTaxFromPatterns = findMoney(
+  const fedTaxFromPatterns =
+    findSpaceSeparatedAmount(text, "2\\s+federal\\s+income\\s+tax\\s+withheld") ??
+    findMoney(
     text,
     new RegExp(`2\\s+federal\\s+income\\s+tax\\s+withheld[^\\d\\n]{0,80}${MONEY}`, "i"),
     new RegExp(`federal\\s+income\\s+tax\\s+withheld[^\\d\\n]{0,80}${MONEY}`, "i"),
@@ -262,6 +273,7 @@ export function extractW2(text: string): RegexExtractionResult {
   // --- SS wages (Box 3) ---
   const ssWages =
     findSpaceSeparatedAmount(text, "Box\\s+3\\s+of\\s+W-?2") ??
+    findSpaceSeparatedAmount(text, "3\\s+social\\s+security\\s+wages") ??
     findMoney(
       text,
       new RegExp(`3\\s+social\\s+security\\s+wages[^\\d\\n]{0,80}${MONEY}`, "i"),
@@ -271,6 +283,7 @@ export function extractW2(text: string): RegexExtractionResult {
   // --- SS tax withheld (Box 4) ---
   const ssTax =
     findAmountBeforeLabel(text, /Box\s+4\s+of\s+W-?2/i) ??
+    findSpaceSeparatedAmount(text, "4\\s+social\\s+security\\s+tax\\s+withheld") ??
     findMoney(
       text,
       new RegExp(`4\\s+social\\s+security\\s+tax\\s+withheld[^\\d\\n]{0,80}${MONEY}`, "i"),
@@ -281,6 +294,7 @@ export function extractW2(text: string): RegexExtractionResult {
   const medicareWages =
     findAmountBeforeLabel(text, /Box\s+5\s+of\s+W-?2/i) ??
     findSpaceSeparatedAmount(text, "Box\\s+5\\s+of\\s+W-?2") ??
+    findSpaceSeparatedAmount(text, "5\\s+medicare\\s+wages") ??
     findMoney(
       text,
       new RegExp(`5\\s+medicare\\s+wages[^\\d\\n]{0,80}${MONEY}`, "i"),
@@ -290,6 +304,7 @@ export function extractW2(text: string): RegexExtractionResult {
   // --- Medicare tax withheld (Box 6) ---
   const medicareTax =
     findAmountBeforeLabel(text, /Box\s+6\s+of\s+W-?2/i) ??
+    findSpaceSeparatedAmount(text, "6\\s+medicare\\s+tax\\s+withheld") ??
     findMoney(
       text,
       new RegExp(`6\\s+medicare\\s+tax\\s+withheld[^\\d\\n]{0,80}${MONEY}`, "i"),
@@ -346,6 +361,7 @@ export function extractW2(text: string): RegexExtractionResult {
   const stateWages =
     findAmountBeforeLabel(text, /Box\s+16\s+of\s+W-?2/i) ??
     findSpaceSeparatedAmount(text, "Box\\s+16\\s+of\\s+W-?2") ??
+    findSpaceSeparatedAmount(text, "16\\s+state\\s+wages") ??
     findMoney(
       text,
       new RegExp(`16\\s+state\\s+wages[^\\d]{0,80}${MONEY}`, "i"),
@@ -356,7 +372,9 @@ export function extractW2(text: string): RegexExtractionResult {
   // Deliberately omitting the "${state}[^\d]{0,40}" pattern — a 2-letter abbreviation
   // appears too frequently in W-2 text (EIN labels, addresses, acronyms) and causes
   // false matches. The IRS label patterns are reliable enough without it.
-  const stateTax = findMoney(
+  const stateTax =
+    findSpaceSeparatedAmount(text, "17\\s+state\\s+income\\s+tax") ??
+    findMoney(
     text,
     new RegExp(`17\\s+state\\s+income\\s+tax[^\\d]{0,80}${MONEY}`, "i"),
     new RegExp(`state\\s+income\\s+tax\\s+withheld[^\\d]{0,80}${MONEY}`, "i"),
@@ -394,7 +412,7 @@ export function extractW2(text: string): RegexExtractionResult {
     );
 
   // --- Confidence: 6 required fields ---
-  const required = [wages, fedTax, ssTax ?? ssWages, payerEin, recipientName, taxYear];
+  const required = [wages, fedTax, ssTax, payerEin, recipientName, taxYear];
   const requiredFieldsFound = required.filter(Boolean).length;
 
   // --- Build fields array ---

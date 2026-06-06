@@ -1,10 +1,15 @@
 import { useState } from "react";
-import type { TaxField } from "@/shared/types";
+import type { FieldDisagreement, TaxField } from "@/shared/types";
 
 interface FieldRowProps {
   field: TaxField;
   editedValue?: string;
+  verified?: boolean;
+  disagreement?: FieldDisagreement;
   onEdit?: (value: string) => void;
+  onVerifiedChange?: (verified: boolean) => void;
+  onSourceSelect?: (sourceText: string) => void;
+  showDisagreement?: boolean;
 }
 
 function CopyValueButton({ value }: { value: string }) {
@@ -25,22 +30,84 @@ function CopyValueButton({ value }: { value: string }) {
   );
 }
 
-export function FieldRow({ field, editedValue, onEdit }: FieldRowProps) {
+function DisagreementPicker({
+  disagreement,
+  currentValue,
+  onPick,
+}: {
+  disagreement: FieldDisagreement;
+  currentValue: string;
+  onPick: (value: string) => void;
+}) {
+  return (
+    <div className="field-row__disagreement-picker" onClick={(e) => e.stopPropagation()}>
+      <p className="field-row__disagreement-title">Pattern vs AI — choose value:</p>
+      <div className="field-row__disagreement-options">
+        <button
+          type="button"
+          className={`field-row__disagreement-option${currentValue === disagreement.regexValue ? " field-row__disagreement-option--active" : ""}`}
+          onClick={() => onPick(disagreement.regexValue)}
+        >
+          <span className="field-row__disagreement-source">Pattern</span>
+          <span className="field-row__disagreement-value">{disagreement.regexValue}</span>
+        </button>
+        <button
+          type="button"
+          className={`field-row__disagreement-option${currentValue === disagreement.aiValue ? " field-row__disagreement-option--active" : ""}`}
+          onClick={() => onPick(disagreement.aiValue)}
+        >
+          <span className="field-row__disagreement-source">AI</span>
+          <span className="field-row__disagreement-value">{disagreement.aiValue}</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function FieldRow({
+  field,
+  editedValue,
+  verified,
+  disagreement,
+  onEdit,
+  onVerifiedChange,
+  onSourceSelect,
+  showDisagreement,
+}: FieldRowProps) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
-  const isLow = field.confidence === "low";
+  const isLow = field.confidence === "low" || showDisagreement;
   const displayValue = editedValue ?? field.value;
 
+  const handleRowClick = () => {
+    if (editing) return;
+    if (field.sourceText) {
+      setExpanded((open) => !open);
+      onSourceSelect?.(field.sourceText);
+    }
+  };
+
   return (
-    <div className={`field-row-wrapper${isLow ? " field-row-wrapper--low" : ""}`}>
+    <div className={`field-row-wrapper${isLow ? " field-row-wrapper--low" : ""}${verified ? " field-row-wrapper--verified" : ""}`}>
       <div
         className="field-row"
-        onClick={() => !editing && field.sourceText && setExpanded(e => !e)}
+        onClick={handleRowClick}
         style={{ cursor: field.sourceText && !editing ? "pointer" : "default" }}
       >
+        {onVerifiedChange && (
+          <label className="field-row__verify" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="checkbox"
+              checked={verified ?? false}
+              onChange={(e) => onVerifiedChange(e.target.checked)}
+              aria-label={`Mark ${field.label} as verified`}
+            />
+          </label>
+        )}
         <span className="field-row__label">
           {field.box && <span className="field-row__box">{field.box}</span>}
           {field.label}
+          {showDisagreement && <span className="field-row__disagreement-badge">AI mismatch</span>}
         </span>
         <span className="field-row__value">
           <CopyValueButton value={displayValue} />
@@ -60,23 +127,30 @@ export function FieldRow({ field, editedValue, onEdit }: FieldRowProps) {
               className={`field-row__value-display${editedValue ? " field-row__value-display--edited" : ""}`}
               onDoubleClick={(e) => {
                 e.stopPropagation();
-                setExpanded(false); // collapse source panel when entering edit mode
+                setExpanded(false);
                 setEditing(true);
               }}
             >
               {displayValue}
               {editedValue && <span className="field-row__edited-badge">edited</span>}
-              {onEdit && !editedValue && <span className="field-row__edit-hint" aria-hidden="true">✎</span>}
+              {onEdit && !editedValue && <span className="field-row__edit-hint" aria-hidden="true">double-click to edit</span>}
             </span>
           )}
           {isLow && (
-            <span className="field-row__dot" title="Low confidence — verify" aria-label="Low confidence">●</span>
+            <span className="field-row__dot" title="Needs review — verify against source" aria-label="Needs review">●</span>
           )}
           {field.sourceText && !editing && (
             <span className="field-row__chevron" aria-hidden="true">{expanded ? "▾" : "▸"}</span>
           )}
         </span>
       </div>
+      {showDisagreement && disagreement && onEdit && (
+        <DisagreementPicker
+          disagreement={disagreement}
+          currentValue={displayValue}
+          onPick={(value) => onEdit(value)}
+        />
+      )}
       {expanded && field.sourceText && (
         <div className="field-row__source">
           <span className="field-row__source-label">Found in:</span>

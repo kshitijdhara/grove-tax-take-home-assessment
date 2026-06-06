@@ -1,5 +1,8 @@
-import type { DocumentType, ExtractionResult } from "@/shared/types";
+import type { DocumentType, ExtractionResult, ProgressStage } from "@/shared/types";
 import { assertNever } from "@/shared/assertNever";
+import { computeOverallConfidence } from "@/shared/confidence";
+import { correctedFormWarning, detectCorrectedForm } from "@/shared/documentFlags";
+import { mergeRegexAndAi } from "@/shared/mergeExtraction";
 import { parsePdf } from "./parsePdf";
 import { identifyDocument } from "./identifyDocument";
 import { extractW2 } from "./w2";
@@ -10,9 +13,6 @@ import { claudeFallback } from "./claudeFallback";
 import { claudeVisionExtract } from "./claudeVision";
 import type { RegexExtractionResult } from "./types";
 
-const CONFIDENCE_THRESHOLD = 0.7;
-// Scanned/photographed PDFs produce very little extractable text.
-// Below this threshold we skip regex entirely and go straight to vision.
 const IMAGE_PDF_TEXT_THRESHOLD = 500;
 
 function extractByDocumentType(docType: DocumentType, rawText: string): RegexExtractionResult {
@@ -25,30 +25,43 @@ function extractByDocumentType(docType: DocumentType, rawText: string): RegexExt
   }
 }
 
+function appendWarning(existing: string | undefined, addition: string): string {
+  return existing ? `${existing} ${addition}` : addition;
+}
+
 function toExtractionResult(
   r: RegexExtractionResult,
   method: ExtractionResult["extractionMethod"],
-  overallConfidence: ExtractionResult["overallConfidence"],
-  warning?: string
+  options?: { warning?: string; corrected?: boolean }
 ): ExtractionResult {
-  return {
+  const base = {
     documentType: r.documentType,
     taxYear: r.taxYear,
     payer: { name: r.payerName, ein: r.payerEin },
     recipient: { name: r.recipientName, ssn_last4: r.recipientSsn4 },
     fields: r.fields,
     ...(r.missingFields && r.missingFields.length > 0 ? { missingFields: r.missingFields } : {}),
-    ...(warning ? { warning } : {}),
+    ...(options?.warning ? { warning: options.warning } : {}),
+    ...(options?.corrected ? { corrected: true } : {}),
     extractionMethod: method,
-    overallConfidence,
+  };
+  return {
+    ...base,
+    overallConfidence: computeOverallConfidence(base),
   };
 }
 
-export async function runExtractionPipeline(file: File): Promise<ExtractionResult> {
-  const rawText = await parsePdf(file);
+export async function runExtractionPipeline(
+  file: File,
+  onProgress?: (stage: ProgressStage) => void
+): Promise<ExtractionResult> {
+  const report = (stage: ProgressStage) => onProgress?.(stage);
 
-  // Image-based PDFs (photographed or scanned) have no embedded text layer.
-  // Skip regex entirely and send the raw PDF to Claude Vision instead.
+  report("parsing");
+  const rawText = await parsePdf(file);
+  const corrected = detectCorrectedForm(rawText);
+  const correctedWarning = corrected ? correctedFormWarning() : undefined;
+
   const meaningfulChars = rawText.replace(/\s+/g, "").length;
   if (meaningfulChars < IMAGE_PDF_TEXT_THRESHOLD) {
     if (!process.env["ANTHROPIC_API_KEY"]) {
@@ -56,8 +69,14 @@ export async function runExtractionPipeline(file: File): Promise<ExtractionResul
         "This appears to be a scanned or photographed document. AI-powered extraction is required but no API key is configured."
       );
     }
+    report("validating");
     try {
-      return await claudeVisionExtract(file);
+      const result = await claudeVisionExtract(file);
+      report("complete");
+      return {
+        ...result,
+        ...(corrected ? { corrected: true, warning: appendWarning(result.warning, correctedWarning!) } : {}),
+      };
     } catch (err) {
       const reason = err instanceof Error ? err.message : "Unknown error";
       throw new Error(
@@ -66,6 +85,7 @@ export async function runExtractionPipeline(file: File): Promise<ExtractionResul
     }
   }
 
+  report("identifying");
   const docType = identifyDocument(rawText);
   if (!docType) {
     throw new Error(
@@ -73,34 +93,63 @@ export async function runExtractionPipeline(file: File): Promise<ExtractionResul
     );
   }
 
-  const regexResult = extractByDocumentType(docType, rawText);
+  report("extracting");
+  const regexPromise = Promise.resolve(extractByDocumentType(docType, rawText));
+  const aiPromise = process.env["ANTHROPIC_API_KEY"]
+    ? claudeFallback(rawText, docType)
+    : null;
 
-  const score = regexResult.requiredFieldsFound / regexResult.totalRequiredFields;
-
-  if (score >= CONFIDENCE_THRESHOLD) {
-    return toExtractionResult(regexResult, "regex", "high");
-  }
-
-  if (!process.env["ANTHROPIC_API_KEY"]) {
-    return toExtractionResult(regexResult, "regex", "low");
-  }
-
-  try {
-    const aiData = await claudeFallback(rawText, docType);
-    return {
-      ...aiData,
-      documentType: docType,
-      extractionMethod: "ai",
-      overallConfidence: "low",
-      ...(regexResult.missingFields?.length ? { missingFields: regexResult.missingFields } : {}),
-    };
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : "Unknown error";
+  if (!aiPromise) {
+    const regexResult = await regexPromise;
+    report("complete");
     return toExtractionResult(
       regexResult,
       "regex",
-      "low",
-      `AI enhancement failed (${reason}). Showing partial extraction — verify all fields manually before use.`
+      {
+        corrected: corrected || undefined,
+        warning: appendWarning(
+          correctedWarning,
+          "AI validation unavailable — pattern matching only. Verify all fields manually."
+        ),
+      }
+    );
+  }
+
+  report("validating");
+  try {
+    const [regexResult, aiData] = await Promise.all([regexPromise, aiPromise]);
+    const regexExtraction = toExtractionResult(regexResult, "regex", {
+      corrected: corrected || undefined,
+      warning: correctedWarning,
+    });
+    const merged = mergeRegexAndAi(
+      {
+        ...regexExtraction,
+        documentType: docType,
+      },
+      aiData
+    );
+    report("complete");
+    return {
+      ...merged,
+      ...(corrected ? { corrected: true, warning: appendWarning(merged.warning, correctedWarning!) } : {}),
+    };
+  } catch (err) {
+    const regexResult = await regexPromise;
+    const reason = err instanceof Error ? err.message : "Unknown error";
+    report("complete");
+    return toExtractionResult(
+      regexResult,
+      "regex",
+      {
+        corrected: corrected || undefined,
+        warning: appendWarning(
+          correctedWarning,
+          `AI validation failed (${reason}). Showing pattern-matched extraction — verify all fields manually before use.`
+        ),
+      }
     );
   }
 }
+
+export { IMAGE_PDF_TEXT_THRESHOLD };

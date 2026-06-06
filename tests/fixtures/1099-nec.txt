@@ -1,0 +1,12 @@
+Form 1099-NEC
+Tax Year 2024
+PAYER'S name
+CONTRACTOR CO
+12-3456789
+RECIPIENT'S name
+JANE DOE
+Recipient's TIN xxx-xx-5678
+1 Nonemployee compensation
+12,500.00
+4 Federal income tax withheld
+0.00

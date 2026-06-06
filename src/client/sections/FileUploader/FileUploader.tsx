@@ -1,23 +1,35 @@
 import { useState, useRef } from "react";
 import type { DragEvent, ChangeEvent } from "react";
-import type { ExtractionResult } from "@/shared/types";
+import type { ExtractionResult, ProgressStage } from "@/shared/types";
+import { hashFileContent } from "@/shared/contentHash";
 import { assertNever } from "@/shared/assertNever";
-import { parseApiErrorBody, parseExtractionResult } from "@/shared/parseExtraction";
 import { isNode } from "../../utils/dom";
+import { streamExtraction } from "../../utils/extractUpload";
+import { ExtractionResultView, progressLabel } from "../../components/ExtractionResult/ExtractionResult";
 import "./FileUploader.css";
 import { DropZone } from "../../components/DropZone/DropZone";
 import { Button } from "../../components/Button/Button";
-import { ExtractionResultView } from "../../components/ExtractionResult/ExtractionResult";
 import { VscFilePdf } from "react-icons/vsc";
 import { CiCircleCheck } from "react-icons/ci";
 import { MdErrorOutline } from "react-icons/md";
 
-type UploadStatus = "idle" | "selected" | "uploading" | "success" | "error";
+type QueueStatus = "pending" | "processing" | "done" | "error";
+
+interface QueueItem {
+  id: string;
+  file: File;
+  status: QueueStatus;
+  result: ExtractionResult | null;
+  errorMessage: string;
+  progressStage: ProgressStage | null;
+}
+
+type UploadStatus = "idle" | "queued" | "processing" | "success" | "error";
 
 interface UploaderState {
   status: UploadStatus;
-  file: File | null;
-  result: ExtractionResult | null;
+  queue: QueueItem[];
+  activeIndex: number;
   errorMessage: string;
 }
 
@@ -27,41 +39,70 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-interface FileUploaderProps {
-  onSuccess?: (result: ExtractionResult, filename: string) => void;
-  edits?: Record<string, string>;
-  onEditsChange?: (edits: Record<string, string>) => void;
-  clientName?: string;
-  onClientNameChange?: (name: string) => void;
+function createQueueItem(file: File): QueueItem {
+  return {
+    id: crypto.randomUUID(),
+    file,
+    status: "pending",
+    result: null,
+    errorMessage: "",
+    progressStage: null,
+  };
 }
 
-export function FileUploader({ onSuccess, edits, onEditsChange, clientName, onClientNameChange }: FileUploaderProps) {
+interface FileUploaderProps {
+  onSuccess?: (result: ExtractionResult, filename: string, file: File, contentHash: string) => void;
+  edits?: Record<string, string>;
+  onEditsChange?: (edits: Record<string, string>) => void;
+  verified?: Record<string, boolean>;
+  onVerifiedChange?: (verified: Record<string, boolean>) => void;
+  clientName?: string;
+  onClientNameChange?: (name: string) => void;
+  pdfFile?: File | null;
+}
+
+export function FileUploader({
+  onSuccess,
+  edits,
+  onEditsChange,
+  verified,
+  onVerifiedChange,
+  clientName,
+  onClientNameChange,
+  pdfFile,
+}: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [state, setState] = useState<UploaderState>({
     status: "idle",
-    file: null,
-    result: null,
+    queue: [],
+    activeIndex: 0,
     errorMessage: "",
   });
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const acceptFile = (file: File) => {
-    if (file.size > 25 * 1024 * 1024) {
-      setState({ status: "error", file: null, result: null, errorMessage: "File is too large (max 25 MB). Please compress the PDF and try again." });
+  const acceptFiles = (files: FileList | File[]) => {
+    const pdfFiles = [...files].filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
+    if (pdfFiles.length === 0) {
+      setState({ status: "error", queue: [], activeIndex: 0, errorMessage: "Only PDF files are supported." });
       return;
     }
-    if (file.type !== "application/pdf") {
-      setState({ status: "error", file: null, result: null, errorMessage: "Only PDF files are supported. Please drop a .pdf file." });
+    const tooLarge = pdfFiles.find((f) => f.size > 25 * 1024 * 1024);
+    if (tooLarge) {
+      setState({ status: "error", queue: [], activeIndex: 0, errorMessage: `${tooLarge.name} exceeds 25 MB limit.` });
       return;
     }
-    setState({ status: "selected", file, result: null, errorMessage: "" });
+    setState({
+      status: "queued",
+      queue: pdfFiles.map(createQueueItem),
+      activeIndex: 0,
+      errorMessage: "",
+    });
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) acceptFile(file);
+    if (e.dataTransfer.files.length > 0) acceptFiles(e.dataTransfer.files);
   };
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -79,41 +120,69 @@ export function FileUploader({ onSuccess, edits, onEditsChange, clientName, onCl
   const handleBrowseClick = () => inputRef.current?.click();
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) acceptFile(file);
+    if (e.target.files && e.target.files.length > 0) acceptFiles(e.target.files);
     e.target.value = "";
   };
 
-  const handleUpload = async () => {
-    if (!state.file) return;
-    setState((s) => ({ ...s, status: "uploading" }));
-    try {
-      const form = new FormData();
-      form.append("file", state.file);
-      const res = await fetch("/api/extract/pdf", { method: "POST", body: form });
-      if (!res.ok) {
-        const rawBody = await res.json().catch(() => ({}));
-        const body = typeof rawBody === "object" && rawBody !== null ? parseApiErrorBody(rawBody) : {};
-        throw new Error(body.error ?? `Server error ${res.status}`);
+  const processQueue = async () => {
+    setState((s) => ({ ...s, status: "processing" }));
+
+    const items = await new Promise<QueueItem[]>((resolve) => {
+      setState((s) => {
+        resolve(s.queue);
+        return s;
+      });
+    });
+
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index];
+      if (!item) continue;
+      setState((s) => ({
+        ...s,
+        activeIndex: index,
+        queue: s.queue.map((q, i) => (i === index ? { ...q, status: "processing", progressStage: "parsing" } : q)),
+      }));
+
+      try {
+        const result = await streamExtraction({
+          file: item.file,
+          onProgress: (stage) => {
+            setState((s) => ({
+              ...s,
+              queue: s.queue.map((q, i) => (i === index ? { ...q, progressStage: stage } : q)),
+            }));
+          },
+        });
+        const contentHash = await hashFileContent(item.file);
+        onSuccess?.(result, item.file.name, item.file, contentHash);
+        setState((s) => ({
+          ...s,
+          queue: s.queue.map((q, i) =>
+            i === index ? { ...q, status: "done", result, progressStage: "complete" } : q
+          ),
+        }));
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Upload failed";
+        setState((s) => ({
+          ...s,
+          queue: s.queue.map((q, i) =>
+            i === index ? { ...q, status: "error", errorMessage: message, progressStage: null } : q
+          ),
+        }));
       }
-      const rawResult = await res.json();
-      if (typeof rawResult !== "object" || rawResult === null) {
-        throw new Error("Server returned malformed extraction data");
-      }
-      const result = parseExtractionResult(rawResult);
-      setState((s) => ({ ...s, status: "success", result }));
-      onSuccess?.(result, state.file?.name ?? "document.pdf");
-    } catch (err) {
-      setState((s) => ({ ...s, status: "error", errorMessage: String(err) }));
     }
+
+    setState((s) => ({ ...s, status: "success", activeIndex: items.length - 1 }));
   };
 
   const handleReset = () => {
-    setState({ status: "idle", file: null, result: null, errorMessage: "" });
+    setState({ status: "idle", queue: [], activeIndex: 0, errorMessage: "" });
     setIsDragging(false);
   };
 
-  const { status, file, result, errorMessage } = state;
+  const { status, queue, activeIndex, errorMessage } = state;
+  const activeItem = queue[activeIndex] ?? null;
+  const activeResult = activeItem?.result ?? null;
 
   const renderPanel = () => {
     switch (status) {
@@ -127,50 +196,83 @@ export function FileUploader({ onSuccess, edits, onEditsChange, clientName, onCl
             onClick={handleBrowseClick}
           />
         );
-      case "selected":
-        return file ? (
+      case "queued":
+        return (
           <div className="file-uploader__panel file-uploader__selected">
-            <div className="file-uploader__file-row">
-              <div className="file-uploader__pdf-badge" aria-hidden="true">
-                <VscFilePdf size={32} color="#E53E3E" />
-              </div>
-              <div className="file-uploader__file-meta">
-                <p className="file-uploader__file-name">{file.name}</p>
-                <p className="file-uploader__file-size">{formatBytes(file.size)}</p>
-              </div>
-            </div>
+            <p className="file-uploader__queue-title">{queue.length} PDF{queue.length === 1 ? "" : "s"} ready</p>
+            <ul className="file-uploader__queue-list">
+              {queue.map((item) => (
+                <li key={item.id} className="file-uploader__queue-item">
+                  <VscFilePdf size={20} color="#E53E3E" />
+                  <span>{item.file.name}</span>
+                  <span className="file-uploader__file-size">{formatBytes(item.file.size)}</span>
+                </li>
+              ))}
+            </ul>
             <div className="file-uploader__actions">
-              <Button variant="ghost" onClick={handleReset}>Change file</Button>
-              <Button variant="primary" onClick={handleUpload}>Extract data</Button>
+              <Button variant="ghost" onClick={handleReset}>Clear</Button>
+              <Button variant="primary" onClick={processQueue}>Extract all</Button>
             </div>
           </div>
-        ) : null;
-      case "uploading":
+        );
+      case "processing":
         return (
           <div className="file-uploader__panel file-uploader__uploading">
             <div className="file-uploader__spinner" role="status" aria-label="Extracting data" />
-            <p className="file-uploader__uploading-label">Extracting data…</p>
-            {file && <p className="file-uploader__uploading-filename">{file.name}</p>}
+            <p className="file-uploader__uploading-label">
+              {activeItem?.progressStage ? progressLabel(activeItem.progressStage) : "Extracting…"}
+            </p>
+            {activeItem && (
+              <p className="file-uploader__uploading-filename">
+                {activeIndex + 1}/{queue.length}: {activeItem.file.name}
+              </p>
+            )}
+            <ul className="file-uploader__queue-list file-uploader__queue-list--compact">
+              {queue.map((item) => (
+                <li key={item.id} className={`file-uploader__queue-item file-uploader__queue-item--${item.status}`}>
+                  {item.file.name} — {item.status}
+                </li>
+              ))}
+            </ul>
           </div>
         );
       case "success":
-        return result ? (
+        return activeResult ? (
           <div className="file-uploader__panel file-uploader__success">
             <div className="file-uploader__success-header">
               <div className="file-uploader__status-icon" aria-hidden="true">
                 <CiCircleCheck size={28} color="var(--success)" />
               </div>
-              <p className="file-uploader__status-title">Extraction complete</p>
+              <p className="file-uploader__status-title">
+                Extraction complete ({queue.filter((q) => q.status === "done").length}/{queue.length})
+              </p>
             </div>
+            {queue.length > 1 && (
+              <div className="file-uploader__queue-tabs">
+                {queue.map((item, index) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`file-uploader__queue-tab${index === activeIndex ? " file-uploader__queue-tab--active" : ""}`}
+                    onClick={() => setState((s) => ({ ...s, activeIndex: index }))}
+                  >
+                    {item.file.name}
+                  </button>
+                ))}
+              </div>
+            )}
             <ExtractionResultView
-              result={result}
+              result={activeResult}
+              pdfFile={activeItem?.file ?? pdfFile ?? null}
               edits={edits}
               onEditsChange={onEditsChange}
+              verified={verified}
+              onVerifiedChange={onVerifiedChange}
               clientName={clientName}
               onClientNameChange={onClientNameChange}
             />
             <div className="file-uploader__success-footer">
-              <Button variant="ghost" onClick={handleReset}>Upload another file</Button>
+              <Button variant="ghost" onClick={handleReset}>Upload more</Button>
             </div>
           </div>
         ) : null;
@@ -191,11 +293,12 @@ export function FileUploader({ onSuccess, edits, onEditsChange, clientName, onCl
   };
 
   return (
-    <div className={`file-uploader${status === "success" && result ? " file-uploader--wide" : ""}`}>
+    <div className={`file-uploader${status === "success" && activeResult ? " file-uploader--wide" : ""}`}>
       <input
         ref={inputRef}
         type="file"
         accept=".pdf,application/pdf"
+        multiple
         className="file-uploader__hidden-input"
         onChange={handleInputChange}
         aria-hidden="true"

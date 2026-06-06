@@ -1,0 +1,112 @@
+.workpaper-panel {
+  margin-top: 0;
+}
+
+.workpaper-panel--empty {
+  padding: var(--sp-4);
+  background: var(--surface-1);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+
+.workpaper-panel__empty {
+  margin: var(--sp-2) 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.workpaper-panel__grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.workpaper-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.workpaper-card__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.workpaper-card__name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: var(--font-weight-medium);
+}
+
+.workpaper-card__count {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.workpaper-card__docs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.workpaper-card__doc {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 12px;
+  color: var(--text-secondary);
+  width: 100%;
+  padding: var(--sp-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.workpaper-card__doc:hover {
+  background: var(--surface-2);
+}
+
+.workpaper-card__doc--active {
+  background: var(--accent-subtle);
+  color: var(--text-accent);
+}
+
+.workpaper-card__badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px var(--sp-2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-subtle);
+  color: var(--text-accent);
+}
+
+.workpaper-card__totals {
+  border-top: 1px solid var(--border-subtle);
+  padding-top: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.workpaper-card__total {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.workpaper-card__total span:last-child {
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}

@@ -1,6 +1,6 @@
 import type { TaxField } from "@/shared/types";
 import type { RegexExtractionResult } from "./types";
-import { MONEY, findMoney, findText } from "./helpers";
+import { MONEY, findMoney, findText, moneyField } from "./helpers";
 
 const REQUIRED_COUNT = 5;
 
@@ -57,11 +57,12 @@ export function extract1099NEC(text: string): RegexExtractionResult {
   const required = [nonemployeeComp, fedTax, payerEin, recipientSsn4, taxYear];
   const requiredFieldsFound = required.filter(Boolean).length;
 
-  const fields: TaxField[] = [];
-  if (nonemployeeComp) fields.push({ box: "Box 1", label: "Nonemployee compensation", value: nonemployeeComp, confidence: "high" });
-  if (fedTax) fields.push({ box: "Box 4", label: "Federal income tax withheld", value: fedTax, confidence: "high" });
-  if (stateTax) fields.push({ box: "Box 5", label: "State income tax withheld", value: stateTax, confidence: "high" });
-  if (stateIncome) fields.push({ box: "Box 6", label: "State income", value: stateIncome, confidence: "high" });
+  const fields: TaxField[] = [
+    moneyField(text, "Box 1", "Nonemployee compensation", nonemployeeComp),
+    moneyField(text, "Box 4", "Federal income tax withheld", fedTax),
+    moneyField(text, "Box 5", "State income tax withheld", stateTax),
+    moneyField(text, "Box 6", "State income", stateIncome),
+  ].filter((field): field is TaxField => field !== null);
 
   return {
     documentType: "1099-NEC",
