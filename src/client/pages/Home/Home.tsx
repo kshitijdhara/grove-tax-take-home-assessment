@@ -11,11 +11,13 @@ import type { ExtractionResult } from "@/shared/types";
 
 export function Home() {
   const { ephemeral, setEphemeral } = useSettings();
-  const { history, addEntry, updateEntry, clearHistory } = useExtractionHistory(ephemeral);
+  const { history, addEntry, updateEntry, clearHistory, removeEntry } = useExtractionHistory(ephemeral);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activePdf, setActivePdf] = useState<File | null>(null);
   const [duplicateNotice, setDuplicateNotice] = useState<string | null>(null);
+  const [supersededNotice, setSupersededNotice] = useState<string | null>(null);
   const [showUploader, setShowUploader] = useState(true);
+  const [batchProcessing, setBatchProcessing] = useState(false);
 
   const activeEntry = history.find((e) => e.id === activeId);
 
@@ -30,18 +32,36 @@ export function Home() {
   }, [activeId, ephemeral]);
 
   const handleSuccess = (result: ExtractionResult, filename: string, file: File, contentHash: string) => {
-    const { id, duplicate } = addEntry(result, filename, file, contentHash);
+    const { id, duplicate, superseded } = addEntry(result, filename, file, contentHash);
     setActiveId(id);
     setActivePdf(file);
-    setShowUploader(false);
     setDuplicateNotice(duplicate ? "This PDF was already extracted — opened existing entry." : null);
+    setSupersededNotice(superseded ? "Corrected form replaced the prior entry for this return." : null);
+  };
+
+  const handleBatchComplete = () => {
+    setBatchProcessing(false);
+    setShowUploader(false);
   };
 
   const handleSelectEntry = (id: string) => {
     setActiveId(id);
     setShowUploader(false);
     setDuplicateNotice(null);
+    setSupersededNotice(null);
   };
+
+  const entryProps = activeEntry ? {
+    edits: activeEntry.edits,
+    onEditsChange: (edits: Record<string, string>) => updateEntry(activeEntry.id, { edits }),
+    verified: activeEntry.verified,
+    onVerifiedChange: (verified: Record<string, boolean>) => updateEntry(activeEntry.id, { verified }),
+    clientName: activeEntry.clientName,
+    onClientNameChange: (clientName: string) => updateEntry(activeEntry.id, { clientName }),
+    preparerName: activeEntry.preparerName,
+    onPreparerChange: (preparerName: string) => updateEntry(activeEntry.id, { preparerName }),
+    onExportComplete: (lastExportedAt: string) => updateEntry(activeEntry.id, { lastExportedAt }),
+  } : {};
 
   return (
     <main className="home">
@@ -65,6 +85,9 @@ export function Home() {
       {duplicateNotice && (
         <div className="home__notice" role="status">{duplicateNotice}</div>
       )}
+      {supersededNotice && (
+        <div className="home__notice home__notice--info" role="status">{supersededNotice}</div>
+      )}
 
       <div className="home__layout">
         <aside className="home__sidebar">
@@ -81,21 +104,24 @@ export function Home() {
             + Upload document{history.length > 0 ? "s" : ""}
           </button>
           {!ephemeral && (
-            <HistoryPanel entries={history} onClear={clearHistory} onUpdateEntry={updateEntry} onSelectEntry={handleSelectEntry} />
+            <HistoryPanel
+              entries={history}
+              onClear={clearHistory}
+              onUpdateEntry={updateEntry}
+              onSelectEntry={handleSelectEntry}
+              onRemoveEntry={removeEntry}
+            />
           )}
         </aside>
 
         <section className="home__main">
-          {showUploader || !activeEntry ? (
+          {showUploader || batchProcessing || !activeEntry ? (
             <FileUploader
               onSuccess={handleSuccess}
-              edits={activeEntry?.edits}
-              onEditsChange={(edits) => activeId && updateEntry(activeId, { edits })}
-              verified={activeEntry?.verified}
-              onVerifiedChange={(verified) => activeId && updateEntry(activeId, { verified })}
-              clientName={activeEntry?.clientName}
-              onClientNameChange={(clientName) => activeId && updateEntry(activeId, { clientName })}
+              onBatchStart={() => setBatchProcessing(true)}
+              onBatchComplete={handleBatchComplete}
               pdfFile={activePdf}
+              {...entryProps}
             />
           ) : (
             <div className="home__detail">
@@ -108,12 +134,7 @@ export function Home() {
               <ExtractionResultView
                 result={activeEntry.result}
                 pdfFile={activePdf}
-                edits={activeEntry.edits}
-                onEditsChange={(edits) => updateEntry(activeEntry.id, { edits })}
-                verified={activeEntry.verified}
-                onVerifiedChange={(verified) => updateEntry(activeEntry.id, { verified })}
-                clientName={activeEntry.clientName}
-                onClientNameChange={(clientName) => updateEntry(activeEntry.id, { clientName })}
+                {...entryProps}
               />
             </div>
           )}

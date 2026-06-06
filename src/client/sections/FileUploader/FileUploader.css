@@ -190,6 +190,7 @@
 .file-uploader__queue-title {
   margin: 0 0 var(--sp-3);
   font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
 }
 
 .file-uploader__queue-list {
@@ -212,6 +213,7 @@
   align-items: center;
   gap: var(--sp-2);
   font-size: 13px;
+  color: var(--text-secondary);
 }
 
 .file-uploader__queue-tabs {
@@ -226,6 +228,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-pill);
   background: transparent;
+  color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
 }
@@ -233,4 +236,5 @@
 .file-uploader__queue-tab--active {
   background: var(--accent-subtle);
   border-color: var(--text-accent);
+  color: var(--text-accent);
 }

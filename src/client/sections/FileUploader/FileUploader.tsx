@@ -52,6 +52,8 @@ function createQueueItem(file: File): QueueItem {
 
 interface FileUploaderProps {
   onSuccess?: (result: ExtractionResult, filename: string, file: File, contentHash: string) => void;
+  onBatchStart?: () => void;
+  onBatchComplete?: () => void;
   edits?: Record<string, string>;
   onEditsChange?: (edits: Record<string, string>) => void;
   verified?: Record<string, boolean>;
@@ -63,6 +65,8 @@ interface FileUploaderProps {
 
 export function FileUploader({
   onSuccess,
+  onBatchStart,
+  onBatchComplete,
   edits,
   onEditsChange,
   verified,
@@ -125,6 +129,7 @@ export function FileUploader({
   };
 
   const processQueue = async () => {
+    onBatchStart?.();
     setState((s) => ({ ...s, status: "processing" }));
 
     const items = await new Promise<QueueItem[]>((resolve) => {
@@ -173,6 +178,7 @@ export function FileUploader({
     }
 
     setState((s) => ({ ...s, status: "success", activeIndex: items.length - 1 }));
+    onBatchComplete?.();
   };
 
   const handleReset = () => {

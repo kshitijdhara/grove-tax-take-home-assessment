@@ -26,6 +26,7 @@
   --error: #FF453A;
   --error-subtle: rgba(255, 69, 58, 0.14);
   --warning: #FFD60A;
+  --text-on-warning: #1a1400;
 
   /* --- Text --- */
   --text-primary: rgba(255, 255, 255, 0.92);

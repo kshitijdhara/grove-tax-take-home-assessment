@@ -55,6 +55,11 @@
   font-size: 14px;
 }
 
+.home__notice--info {
+  background: rgba(255, 214, 10, 0.12);
+  color: var(--warning);
+}
+
 .home__layout {
   display: grid;
   grid-template-columns: 280px 1fr;
@@ -106,8 +111,14 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: transparent;
+  color: var(--text-secondary);
   cursor: pointer;
   font-size: 13px;
+}
+
+.home__detail-back:hover {
+  color: var(--text-primary);
+  background: var(--surface-1);
 }
 
 @media (max-width: 900px) {

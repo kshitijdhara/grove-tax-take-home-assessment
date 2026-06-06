@@ -8,8 +8,27 @@
 
 html {
   font-size: 16px;
+  color-scheme: dark;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+select option {
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
 }
 
 body {

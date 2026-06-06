@@ -30,9 +30,19 @@ function saveHistory(entries: HistoryEntry[]): void {
   }
 }
 
+function sameReturnIdentity(a: ExtractionResult, b: ExtractionResult): boolean {
+  return (
+    a.documentType === b.documentType &&
+    a.taxYear === b.taxYear &&
+    a.payer.ein === b.payer.ein &&
+    a.recipient.ssn_last4 === b.recipient.ssn_last4
+  );
+}
+
 export interface AddEntryResult {
   id: string;
   duplicate: boolean;
+  superseded?: boolean;
 }
 
 export function useExtractionHistory(ephemeral: boolean) {
@@ -49,6 +59,7 @@ export function useExtractionHistory(ephemeral: boolean) {
       timestamp: Date.now(),
       filename,
       contentHash,
+      returnYear: result.taxYear,
       result,
     };
 
@@ -57,13 +68,23 @@ export function useExtractionHistory(ephemeral: boolean) {
       return { id: entry.id, duplicate: false };
     }
 
-    const existing = history.find((e) => e.contentHash === contentHash);
-    if (existing) {
-      return { id: existing.id, duplicate: true };
+    const existingByHash = history.find((e) => e.contentHash === contentHash);
+    if (existingByHash) {
+      return { id: existingByHash.id, duplicate: true };
     }
 
+    const supersededEntry = result.corrected
+      ? history.find((e) => sameReturnIdentity(e.result, result))
+      : undefined;
+
     setHistory((prev) => {
-      const next = [entry, ...prev].slice(0, MAX_ITEMS);
+      const withoutSuperseded = supersededEntry
+        ? prev.filter((e) => e.id !== supersededEntry.id)
+        : prev;
+      const nextEntry = supersededEntry
+        ? { ...entry, supersedesId: supersededEntry.id }
+        : entry;
+      const next = [nextEntry, ...withoutSuperseded].slice(0, MAX_ITEMS);
       saveHistory(next);
       return next;
     });
@@ -72,12 +93,17 @@ export function useExtractionHistory(ephemeral: boolean) {
       window.alert("Could not store PDF for history replay. Re-upload to view source alongside fields.");
     });
 
+    if (supersededEntry) {
+      deletePdfBlob(supersededEntry.id).catch(() => undefined);
+      return { id: entry.id, duplicate: false, superseded: true };
+    }
+
     return { id: entry.id, duplicate: false };
   };
 
   const updateEntry = (
     id: string,
-    patch: Partial<Pick<HistoryEntry, "edits" | "verified" | "clientName">>
+    patch: Partial<Pick<HistoryEntry, "edits" | "verified" | "clientName" | "preparerName" | "lastExportedAt" | "returnYear">>
   ) => {
     setHistory((prev) => {
       const next = prev.map((e) => (e.id === id ? { ...e, ...patch } : e));
