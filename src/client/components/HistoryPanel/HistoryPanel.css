@@ -1,0 +1,194 @@
+.history-panel {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  animation: fu-fade-up var(--duration-base) var(--ease-out) both;
+}
+
+.history-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--sp-1);
+}
+
+.history-panel__title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.history-panel__clear {
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: color var(--duration-fast) ease;
+}
+
+.history-panel__clear:hover {
+  color: var(--text-secondary);
+}
+
+.history-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* Individual history card */
+.history-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;
+}
+
+.history-card:hover {
+  background: var(--surface-2);
+  border-color: var(--border-default);
+}
+
+.history-card__badge {
+  padding: 2px var(--sp-2);
+  background: var(--accent-subtle);
+  color: var(--text-accent);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.history-card__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-card__payer {
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-card__detail {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.history-card__dot {
+  opacity: 0.5;
+}
+
+.history-card__chevron {
+  font-size: 18px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* Modal overlay */
+.history-modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-4);
+  z-index: 100;
+  animation: modal-fade-in var(--duration-fast) ease both;
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.history-modal__content {
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  animation: modal-slide-up var(--duration-base) var(--ease-out) both;
+}
+
+@keyframes modal-slide-up {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.history-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-4) var(--sp-6);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.history-modal__filename {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.history-modal__close {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--duration-fast) ease, background var(--duration-fast) ease;
+}
+
+.history-modal__close:hover {
+  color: var(--text-primary);
+  background: var(--surface-2);
+}

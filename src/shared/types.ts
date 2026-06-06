@@ -22,6 +22,7 @@ export interface ExtractionResult {
   recipient: { name: string; ssn_last4: string };
   fields: TaxField[];
   missingFields?: MissingField[];
+  warning?: string;
   extractionMethod: ExtractionMethod;
   overallConfidence: ConfidenceLevel;
 }

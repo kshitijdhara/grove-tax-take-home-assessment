@@ -146,6 +146,25 @@
   text-overflow: ellipsis;
 }
 
+/* Warning banner */
+.extraction-result__warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6);
+  background: rgba(255, 214, 10, 0.08);
+  border-bottom: 1px solid rgba(255, 214, 10, 0.18);
+  font-size: 13px;
+  color: var(--warning);
+  line-height: 1.5;
+}
+
+.extraction-result__warning-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  margin-top: 1px;
+}
+
 /* Section headers within fields view */
 .er-section-header {
   padding: var(--sp-2) var(--sp-6);

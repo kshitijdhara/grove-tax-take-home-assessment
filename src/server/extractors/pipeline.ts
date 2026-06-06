@@ -17,7 +17,8 @@ const IMAGE_PDF_TEXT_THRESHOLD = 500;
 function toExtractionResult(
   r: RegexExtractionResult,
   method: ExtractionResult["extractionMethod"],
-  overallConfidence: ExtractionResult["overallConfidence"]
+  overallConfidence: ExtractionResult["overallConfidence"],
+  warning?: string
 ): ExtractionResult {
   return {
     documentType: r.documentType,
@@ -26,6 +27,7 @@ function toExtractionResult(
     recipient: { name: r.recipientName, ssn_last4: r.recipientSsn4 },
     fields: r.fields,
     ...(r.missingFields && r.missingFields.length > 0 ? { missingFields: r.missingFields } : {}),
+    ...(warning ? { warning } : {}),
     extractionMethod: method,
     overallConfidence,
   };
@@ -43,7 +45,14 @@ export async function runExtractionPipeline(file: File): Promise<ExtractionResul
         "This appears to be a scanned or photographed document. AI-powered extraction is required but no API key is configured."
       );
     }
-    return claudeVisionExtract(file);
+    try {
+      return await claudeVisionExtract(file);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "Unknown error";
+      throw new Error(
+        `AI vision extraction failed: ${reason}. Ensure the document is clearly photographed with all text visible and try again.`
+      );
+    }
   }
 
   const docType = identifyDocument(rawText);
@@ -79,7 +88,13 @@ export async function runExtractionPipeline(file: File): Promise<ExtractionResul
       extractionMethod: "ai",
       overallConfidence: "low",
     };
-  } catch {
-    return toExtractionResult(regexResult, "regex", "low");
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "Unknown error";
+    return toExtractionResult(
+      regexResult,
+      "regex",
+      "low",
+      `AI enhancement failed (${reason}). Showing partial extraction — verify all fields manually before use.`
+    );
   }
 }

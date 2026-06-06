@@ -1,25 +1,8 @@
 import type { TaxField } from "@/shared/types";
 import type { RegexExtractionResult } from "./types";
+import { MONEY, findMoney, findText } from "./helpers";
 
-const MONEY = `\\$?\\s*(\\d+(?:,\\d{3})*\\.\\d{2})`;
 const REQUIRED_COUNT = 4;
-
-function findMoney(text: string, ...patterns: RegExp[]): string | null {
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (m?.[1]) return m[1];
-  }
-  return null;
-}
-
-function findText(text: string, ...patterns: RegExp[]): string | null {
-  for (const p of patterns) {
-    const m = text.match(p);
-    const v = m?.[1]?.trim();
-    if (v) return v;
-  }
-  return null;
-}
 
 export function extract1099INT(text: string): RegexExtractionResult {
   const taxYear = findText(text,

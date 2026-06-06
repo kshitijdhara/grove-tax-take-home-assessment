@@ -24,7 +24,11 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function FileUploader() {
+interface FileUploaderProps {
+  onSuccess?: (result: ExtractionResult, filename: string) => void;
+}
+
+export function FileUploader({ onSuccess }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [state, setState] = useState<UploaderState>({
     status: "idle",
@@ -85,6 +89,7 @@ export function FileUploader() {
       }
       const result = await res.json() as ExtractionResult;
       setState((s) => ({ ...s, status: "success", result }));
+      onSuccess?.(result, state.file?.name ?? "document.pdf");
     } catch (err) {
       setState((s) => ({ ...s, status: "error", errorMessage: String(err) }));
     }

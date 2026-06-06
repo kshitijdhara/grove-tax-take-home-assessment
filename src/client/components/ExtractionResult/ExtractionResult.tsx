@@ -54,6 +54,15 @@ function MissingFieldRow({ field }: { field: MissingField }) {
   );
 }
 
+function WarningBanner({ message }: { message: string }) {
+  return (
+    <div className="extraction-result__warning">
+      <span className="extraction-result__warning-icon" aria-hidden="true">⚠</span>
+      <span>{message}</span>
+    </div>
+  );
+}
+
 function DownloadCsvButton({ result }: { result: ExtractionResult }) {
   const handleDownload = () => {
     const rows: string[][] = [
@@ -114,6 +123,8 @@ export function ExtractionResultView({ result }: ExtractionResultViewProps) {
           </button>
         </div>
       </div>
+
+      {result.warning && <WarningBanner message={result.warning} />}
 
       {view === "fields" ? (
         <div className="extraction-result__fields">
