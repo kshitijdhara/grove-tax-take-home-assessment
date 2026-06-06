@@ -135,9 +135,11 @@ export function extractW2(text: string): RegexExtractionResult {
     ) ?? "";
 
   // --- Control number (Box d) ---
+  // Only extract when the value is clearly alphanumeric and not a label line.
+  // ADP W-2s place "d Control number" in the same label row as other headers,
+  // so the following line is often another label, not an actual control number.
   const controlNumber = findText(text,
-    /\bd\s+control\s+number[^\n]*\n+([^\n]{1,30})/i,
-    /control\s+(?:number|no\.?)[:\s]+([^\n]{1,30})/i
+    /\bd\s+control\s+number[^\n]*\n+([A-Z0-9]{3,20})\s*\n/i
   );
 
   // --- Employer EIN (Box b) ---
@@ -162,15 +164,13 @@ export function extractW2(text: string): RegexExtractionResult {
     ) ?? "";
 
   // --- Employer address (Box c, continuation) ---
-  const payerAddress = findText(text,
-    /employer[''s]*\s+name[,\s]+address[^\n]*\n+[^\n]{2,80}\n+([^\n]{5,80})/i,
-    /Batch\s*#?\s*\d+\s*\n[^\n]+\n([^\n]{5,80})/i
+  // Must be a line that looks like a street address (starts with a number).
+  // Strips tab-duplicated values produced by multi-copy PDF layouts.
+  const payerAddressRaw = findText(text,
+    /employer[''s]*\s+name[,\s]+address[^\n]*\n+[^\n]{2,80}\n+(\d+[^\n]{5,70})/i,
+    /Batch\s*#?\s*\d+\s*\n[^\n]+\n(\d+[^\n]{5,70})/i
   );
-
-  // --- Dept / Corp / Employer use only ---
-  const dept            = findText(text, /\bdept(?:artment)?\.?\s*(?:no\.?|:)?\s*([A-Za-z0-9 \-]{1,30})\s*\n/i);
-  const corp            = findText(text, /\bcorp(?:oration)?\.?\s*:?\s*([A-Za-z0-9 \-]{1,40})\s*\n/i);
-  const employerUseOnly = findText(text, /employer[''s]*\s+use\s+only[^\n]*\n+([^\n]{1,60})/i);
+  const payerAddress = payerAddressRaw ? payerAddressRaw.split(/\t/)[0]?.trim() ?? null : null;
 
   // --- Employee name (Box e) ---
   // Standard labeled patterns first, then positional heuristics for unlabeled layouts.
@@ -186,18 +186,22 @@ export function extractW2(text: string): RegexExtractionResult {
     ) ?? "";
 
   // --- Employee address (Box f) ---
-  const recipientAddress = findText(text,
-    /employee[''s]*\s+address[^\n]*\n+([^\n]{5,80})/i,
-    /[A-Z]{3,}(?:\s+[A-Z]{2,}){1,3}\n(\d+\s+[^\n]{5,60})/
+  // Only use the explicit IRS label pattern — the positional heuristic (name above street)
+  // was matching the employer's address, not the employee's.
+  const recipientAddressRaw = findText(text,
+    /employee[''s]*\s+address[^\n]*\n+([^\n]{5,80})/i
   );
+  const recipientAddress = recipientAddressRaw ? recipientAddressRaw.split(/\t/)[0]?.trim() ?? null : null;
 
   // --- SSN last 4 ---
   const recipientSsn4 =
     findText(
       text,
-      /employee[''s]*\s+(?:ssn|social\s+security)[^a-z\d]*(?:xxx|[*]+)[^a-z\d]*(\d{4})/i,
-      /\b(?:xxx|[*]+)[- ]?(?:xx|[*]+)[- ]?(\d{4})\b/i,
-      /\b\d{3}-\d{2}-(\d{4})\b/
+      /employee[''s]*\s+(?:ssn|social\s+security)[^a-z\d]*(?:xxx|[•●*]+)[^a-z\d]*(\d{4})/i,
+      /\b(?:xxx|[•●*]+)[- ]?(?:xx|[•●*]+)[- ]?(\d{4})\b/i,
+      /\b\d{3}-\d{2}-(\d{4})\b/,
+      // ADP sometimes masks as "000-00-NNNN"
+      /\b0{3}-0{2}-(\d{4})\b/
     ) ?? "";
 
   // --- Wages (Box 1) ---
@@ -287,13 +291,27 @@ export function extractW2(text: string): RegexExtractionResult {
   const box14Items = findBox14Items(text);
 
   // --- State (Box 15) ---
+  // Priority: state-section anchor > Box 15 inline > state wages label > ZIP-anchored address.
+  // ZIP-anchored is last — it matches the employer's address state (e.g. CA) which differs
+  // from the employee's work state (e.g. PA) on remote-worker W-2s.
+  // NOTE: "\bstate[ \t]+(STATE)" is intentionally absent — it matches "state ID no." labels.
   const ALL_STATES = "AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC";
-  const state = findText(text, new RegExp(`\\b(${ALL_STATES})\\b`));
+
+  // State code as a Box 15 value always starts its own line in payroll PDFs.
+  // "ID" inside "Employer's state ID no." is mid-line and never matches ^.
+  // Using multiline flag (m) so ^ anchors to any line start.
+  const state = findText(text,
+    new RegExp(`^(${ALL_STATES})[ \\t]+\\d{2}-\\d{5,}`, "m"),             // line-start: "PA  77-0332939-000"
+    new RegExp(`^(${ALL_STATES})[ \\t]*$`, "m"),                           // line-start: "PA" alone
+    new RegExp(`\\b15[ \\t]+(${ALL_STATES})\\b`),                          // "15 PA" inline
+    new RegExp(`state\\s+wages[^\\n]{0,80}\\b(${ALL_STATES})\\b`, "i"),   // state on wages label line
+    new RegExp(`\\b(${ALL_STATES})[ \\t]+\\d{5}(?:-\\d{4})?\\b`)          // last resort: ZIP-anchored
+  );
 
   // --- Employer state ID (Box 15, second field) ---
+  // Require at least 5 characters to avoid matching "no", "id", abbreviations from labels.
   const employerStateId = findText(text,
-    /employer[''s]*\s+state\s+id(?:\s+(?:number|no\.?))?[^\n]*\n+([^\n]{2,30})/i,
-    /state\s+(?:id|tax\s+id)[:\s]+([A-Za-z0-9\-]{2,20})/i
+    /employer[''s]*\s+state\s+id(?:\s+(?:number|no\.?))?[^\n]*\n+([A-Za-z0-9\-]{5,20})/i
   );
 
   // --- State wages (Box 16) ---
@@ -307,28 +325,25 @@ export function extractW2(text: string): RegexExtractionResult {
     );
 
   // --- State income tax (Box 17) ---
-  const stateTax = state
-    ? findMoney(
-        text,
-        new RegExp(`${state}[^\\d]{0,40}${MONEY}`, "i"),
-        new RegExp(`17\\s+state\\s+income\\s+tax[^\\d]{0,80}${MONEY}`, "i"),
-        new RegExp(`state\\s+income\\s+tax[^\\d]{0,80}${MONEY}`, "i")
-      )
-    : findMoney(
-        text,
-        new RegExp(`17\\s+state\\s+income\\s+tax[^\\d]{0,80}${MONEY}`, "i"),
-        new RegExp(`state\\s+income\\s+tax[^\\d]{0,80}${MONEY}`, "i")
-      );
+  // Deliberately omitting the "${state}[^\d]{0,40}" pattern — a 2-letter abbreviation
+  // appears too frequently in W-2 text (EIN labels, addresses, acronyms) and causes
+  // false matches. The IRS label patterns are reliable enough without it.
+  const stateTax = findMoney(
+    text,
+    new RegExp(`17\\s+state\\s+income\\s+tax[^\\d]{0,80}${MONEY}`, "i"),
+    new RegExp(`state\\s+income\\s+tax\\s+withheld[^\\d]{0,80}${MONEY}`, "i"),
+    new RegExp(`state\\s+income\\s+tax[^\\d]{0,80}${MONEY}`, "i")
+  );
 
   // --- Local wages (Box 18) ---
-  const localWages =
-    findAmountBeforeLabel(text, /Box\s+18\s+of\s+W-?2/i) ??
-    findMoney(
-      text,
-      new RegExp(`[Ll]ocal\\s+[Ww]ages[,\\s]+[Tt]ips[^\\d]{0,40}${MONEY}`),
-      new RegExp(`[Ll]ocal\\s+[Ww]ages[^\\d]{0,40}${MONEY}`),
-      new RegExp(`18\\s+local\\s+wages[^\\d]{0,80}${MONEY}`, "i")
-    );
+  // findAmountBeforeLabel is intentionally omitted here — the 200-char lookback window
+  // reaches back to Box 1 wages on multi-section layouts, causing a false match.
+  const localWages = findMoney(
+    text,
+    new RegExp(`[Ll]ocal\\s+[Ww]ages[,\\s]+[Tt]ips[^\\d]{0,40}${MONEY}`),
+    new RegExp(`[Ll]ocal\\s+[Ww]ages[^\\d]{0,40}${MONEY}`),
+    new RegExp(`18\\s+local\\s+wages[^\\d]{0,80}${MONEY}`, "i")
+  );
 
   // --- Local income tax (Box 19) & Locality name/code (Box 20) ---
   // PSD codes (6-digit locality codes) appear in Pennsylvania W-2s from multiple processors.
@@ -376,12 +391,9 @@ export function extractW2(text: string): RegexExtractionResult {
     if (value) fields.push({ box, label, value, confidence: "high" });
   };
 
-  if (controlNumber)    addText("Box d",        "Control number",     controlNumber);
-  if (dept)             addText("Dept.",         "Department",         dept);
-  if (corp)             addText("Corp.",         "Corporation",        corp);
-  if (employerUseOnly)  addText("Employer use",  "Employer use only",  employerUseOnly);
-  if (payerAddress)     addText("Box c",         "Employer address",   payerAddress);
-  if (recipientAddress) addText("Box f",         "Employee address",   recipientAddress);
+  if (controlNumber)    addText("Box d", "Control number",   controlNumber);
+  if (payerAddress)     addText("Box c", "Employer address", payerAddress);
+  if (recipientAddress) addText("Box f", "Employee address", recipientAddress);
 
   add("Box 1",  "Wages, tips, other compensation", wages);
   add("Box 2",  "Federal income tax withheld",     fedTax);
