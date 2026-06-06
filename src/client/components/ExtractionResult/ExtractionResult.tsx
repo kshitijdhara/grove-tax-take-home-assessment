@@ -617,7 +617,7 @@ export function ExtractionResultView({
             <span className="extraction-result__export-override-badge">Unverified export enabled</span>
           )}
         </div>
-        <ExtractionBadge result={result} />
+        <ExtractionBadge result={result} reviewComplete={reviewComplete} />
       </div>
 
       {showExportConfirm && (

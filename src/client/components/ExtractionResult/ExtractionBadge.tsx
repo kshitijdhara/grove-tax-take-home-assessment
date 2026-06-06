@@ -4,9 +4,21 @@ import { needsReview } from "@/shared/confidence";
 
 interface ExtractionBadgeProps {
   result: ExtractionResult;
+  reviewComplete?: boolean;
 }
 
-export function ExtractionBadge({ result }: ExtractionBadgeProps) {
+export function ExtractionBadge({ result, reviewComplete = false }: ExtractionBadgeProps) {
+  if (reviewComplete) {
+    return (
+      <span
+        className="extraction-badge extraction-badge--validated"
+        title="All fields verified by preparer."
+      >
+        Review complete
+      </span>
+    );
+  }
+
   const review = needsReview(result);
 
   const title = (() => {
