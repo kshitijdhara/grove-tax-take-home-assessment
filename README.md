@@ -2,8 +2,8 @@
 
 Upload W-2s and 1099s. Extract fields. **Prove** they're right. Export without lying to downstream software.
 
-- **Live demo:** `[HOSTED_URL]`
-- **Code:** `[GITHUB_URL]`
+- **Live demo:** https://grove-tax-take-home-assessment.onrender.com/
+- **Code:** https://github.com/kshitijdhara/grove-tax-take-home-assessment
 - **Time spent:** `[~18 hours across focused sessions]`
 
 ---
