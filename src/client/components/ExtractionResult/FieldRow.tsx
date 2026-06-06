@@ -131,7 +131,7 @@ export function FieldRow({
                 setEditing(true);
               }}
             >
-              {displayValue}
+              {displayValue || (showDisagreement ? "Pick a value below" : "—")}
               {editedValue && <span className="field-row__edited-badge">edited</span>}
               {onEdit && !editedValue && <span className="field-row__edit-hint" aria-hidden="true">double-click to edit</span>}
             </span>

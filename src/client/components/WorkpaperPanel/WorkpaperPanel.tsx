@@ -1,6 +1,8 @@
 import "./WorkpaperPanel.css";
 import type { HistoryEntry } from "@/shared/parseExtraction";
 import { fieldKey } from "@/shared/extractionKeys";
+import { buildClientRowCsv, clientExportFilename, downloadText } from "@/shared/exportFormats";
+import { entryVerificationSummary } from "@/shared/reviewStatus";
 
 interface ClientGroup {
   clientName: string;
@@ -75,18 +77,22 @@ export function WorkpaperPanel({ entries, activeId, onSelectEntry }: WorkpaperPa
               <span className="workpaper-card__count">{group.entries.length} doc{group.entries.length === 1 ? "" : "s"}</span>
             </header>
             <ul className="workpaper-card__docs">
-              {group.entries.map((entry) => (
-                <li key={entry.id}>
-                  <button
-                    type="button"
-                    className={`workpaper-card__doc${activeId === entry.id ? " workpaper-card__doc--active" : ""}`}
-                    onClick={() => onSelectEntry?.(entry.id)}
-                  >
-                    <span className="workpaper-card__badge">{entry.result.documentType}</span>
-                    <span>{entry.result.taxYear || entry.filename}</span>
-                  </button>
-                </li>
-              ))}
+              {group.entries.map((entry) => {
+                const summary = entryVerificationSummary(entry.result, entry.edits ?? {}, entry.verified ?? {});
+                return (
+                  <li key={entry.id}>
+                    <button
+                      type="button"
+                      className={`workpaper-card__doc${activeId === entry.id ? " workpaper-card__doc--active" : ""}`}
+                      onClick={() => onSelectEntry?.(entry.id)}
+                    >
+                      <span className="workpaper-card__badge">{entry.result.documentType}</span>
+                      <span>{entry.result.taxYear || entry.filename}</span>
+                      <span className="workpaper-card__verify">{summary.done}/{summary.total} verified</span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
             <footer className="workpaper-card__totals">
               {group.totalW2Wages > 0 && (
@@ -101,6 +107,13 @@ export function WorkpaperPanel({ entries, activeId, onSelectEntry }: WorkpaperPa
                   <span>${group.totalNecIncome.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                 </div>
               )}
+              <button
+                type="button"
+                className="workpaper-card__export"
+                onClick={() => downloadText(buildClientRowCsv(group.clientName, group.entries), clientExportFilename(group.clientName))}
+              >
+                Export client CSV
+              </button>
             </footer>
           </article>
         ))}

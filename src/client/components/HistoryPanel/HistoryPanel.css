@@ -47,6 +47,30 @@
   gap: var(--sp-2);
 }
 
+.history-card-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-1);
+}
+
+.history-card-row .history-card {
+  flex: 1;
+}
+
+.history-card__remove {
+  align-self: center;
+  padding: var(--sp-2);
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.history-card__remove:hover {
+  color: var(--error);
+}
+
 /* Individual history card */
 .history-card {
   width: 100%;
@@ -59,6 +83,7 @@
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-md);
+  color: var(--text-primary);
   cursor: pointer;
   text-align: left;
   transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease;

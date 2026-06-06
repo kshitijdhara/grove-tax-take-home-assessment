@@ -79,10 +79,29 @@
   line-height: 1.4;
 }
 
+.pdf-viewer__frame-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 420px;
+}
+
 .pdf-viewer__frame {
   flex: 1;
   width: 100%;
   min-height: 420px;
   border: none;
   background: #fff;
+}
+
+.pdf-viewer__highlight-rect {
+  position: absolute;
+  background: rgba(255, 214, 10, 0.35);
+  border: 2px solid var(--warning);
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+.pdf-viewer__highlight-page {
+  font-size: 11px;
+  color: var(--text-accent);
 }

@@ -14,9 +14,17 @@ interface HighlightMatch {
   snippet: string;
 }
 
-async function findTextInPdf(file: File, searchText: string): Promise<HighlightMatch | null> {
+interface TextHighlightRect {
+  page: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+async function findTextHighlight(file: File, searchText: string): Promise<{ match: HighlightMatch | null; rect: TextHighlightRect | null }> {
   const normalized = searchText.replace(/\s+/g, " ").trim().slice(0, 80);
-  if (!normalized) return null;
+  if (!normalized) return { match: null, rect: null };
 
   const data = await file.arrayBuffer();
   const pdf = await getDocument({ data }).promise;
@@ -24,22 +32,45 @@ async function findTextInPdf(file: File, searchText: string): Promise<HighlightM
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .flatMap((item) => ("str" in item && typeof item.str === "string" ? [item.str] : []))
-      .join(" ")
-      .replace(/\s+/g, " ");
+    const viewport = page.getViewport({ scale: 1 });
 
-    if (pageText.toLowerCase().includes(normalized.toLowerCase())) {
-      return { page: pageNum, snippet: normalized };
+    const items = textContent.items.flatMap((item) => {
+      if (!("str" in item) || typeof item.str !== "string") return [];
+      if (!("transform" in item) || !Array.isArray(item.transform)) return [];
+      return [{ str: item.str, transform: item.transform }];
+    });
+
+    const pageText = items.map((item) => item.str).join(" ").replace(/\s+/g, " ");
+    if (!pageText.toLowerCase().includes(normalized.toLowerCase())) continue;
+
+    const needle = normalized.split(" ").find((part) => part.length >= 4) ?? normalized;
+    const hit = items.find((item) => item.str.toLowerCase().includes(needle.toLowerCase()));
+    if (hit) {
+      const x = hit.transform[4] ?? 0;
+      const y = hit.transform[5] ?? 0;
+      const height = Math.abs(hit.transform[3] ?? 12);
+      return {
+        match: { page: pageNum, snippet: normalized },
+        rect: {
+          page: pageNum,
+          left: (x / viewport.width) * 100,
+          top: (1 - (y / viewport.height)) * 100,
+          width: 20,
+          height: (height / viewport.height) * 100,
+        },
+      };
     }
+
+    return { match: { page: pageNum, snippet: normalized }, rect: null };
   }
 
-  return null;
+  return { match: null, rect: null };
 }
 
 export function PdfViewer({ file, highlightText }: PdfViewerProps) {
   const [url, setUrl] = useState<string | null>(null);
   const [match, setMatch] = useState<HighlightMatch | null>(null);
+  const [rect, setRect] = useState<TextHighlightRect | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
@@ -55,11 +86,18 @@ export function PdfViewer({ file, highlightText }: PdfViewerProps) {
   useEffect(() => {
     if (!file || !highlightText) {
       setMatch(null);
+      setRect(null);
       return;
     }
-    findTextInPdf(file, highlightText)
-      .then(setMatch)
-      .catch(() => setMatch(null));
+    findTextHighlight(file, highlightText)
+      .then(({ match: m, rect: r }) => {
+        setMatch(m);
+        setRect(r);
+      })
+      .catch(() => {
+        setMatch(null);
+        setRect(null);
+      });
   }, [file, highlightText]);
 
   useEffect(() => {
@@ -89,7 +127,21 @@ export function PdfViewer({ file, highlightText }: PdfViewerProps) {
           {match && <span className="pdf-viewer__highlight-page">Page {match.page}</span>}
         </div>
       )}
-      <iframe ref={iframeRef} className="pdf-viewer__frame" src={url} title={`Source PDF: ${file.name}`} />
+      <div className="pdf-viewer__frame-wrap">
+        <iframe ref={iframeRef} className="pdf-viewer__frame" src={url} title={`Source PDF: ${file.name}`} />
+        {rect && (
+          <div
+            className="pdf-viewer__highlight-rect"
+            style={{
+              left: `${rect.left}%`,
+              top: `${rect.top}%`,
+              width: `${rect.width}%`,
+              height: `${Math.max(rect.height, 2)}%`,
+            }}
+            aria-hidden="true"
+          />
+        )}
+      </div>
     </div>
   );
 }

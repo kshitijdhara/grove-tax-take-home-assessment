@@ -106,7 +106,24 @@
   color: var(--text-secondary);
 }
 
-.workpaper-card__total span:last-child {
-  font-family: var(--font-mono);
-  color: var(--text-primary);
+.workpaper-card__verify {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.workpaper-card__export {
+  margin-top: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.workpaper-card__export:hover {
+  background: var(--accent-subtle);
 }

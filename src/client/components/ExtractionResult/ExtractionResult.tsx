@@ -12,7 +12,8 @@ import {
   exportFilename,
   type ExportSignOff,
 } from "@/shared/exportFormats";
-import { allFieldsVerified, reviewKeysForResult, unverifiedLowConfidenceCount, verifiedCount } from "@/shared/reviewStatus";
+import { allFieldsVerified, reviewKeysForResult, unverifiedFieldLabels, unverifiedLowConfidenceCount, verifiedCount } from "@/shared/reviewStatus";
+import { w2ArithmeticChecks } from "@/shared/w2Arithmetic";
 import { DocumentHeader } from "./DocumentHeader";
 import { FieldRow } from "./FieldRow";
 import { ExtractionBadge } from "./ExtractionBadge";
@@ -91,7 +92,6 @@ function MetaFieldRow({
 }) {
   const [editing, setEditing] = useState(false);
   const display = edits[editKeyName] ?? value;
-  if (!display && !editing) return null;
 
   return (
     <div className={`field-row${verified ? " field-row--verified" : ""}`}>
@@ -186,6 +186,49 @@ function progressLabel(stage: string): string {
   }
 }
 
+function ExportConfirmDialog({
+  fields,
+  onConfirm,
+  onCancel,
+}: {
+  fields: string[];
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="export-confirm__backdrop" onClick={onCancel}>
+      <div className="export-confirm__dialog" onClick={(e) => e.stopPropagation()}>
+        <h3 className="export-confirm__title">Export without full verification?</h3>
+        <p className="export-confirm__subtitle">The following items are unresolved or unverified:</p>
+        <ul className="export-confirm__list">
+          {fields.map((field) => <li key={field}>{field}</li>)}
+        </ul>
+        <div className="export-confirm__actions">
+          <button type="button" className="export-confirm__cancel" onClick={onCancel}>Cancel</button>
+          <button type="button" className="export-confirm__confirm" onClick={onConfirm}>Export unverified data</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function W2ArithmeticPanel({ checks }: { checks: ReturnType<typeof w2ArithmeticChecks> }) {
+  if (checks.length === 0) return null;
+  return (
+    <div className="extraction-result__arithmetic">
+      <SectionHeader label="W-2 arithmetic checks" />
+      <ul className="arithmetic-checks">
+        {checks.map((check) => (
+          <li key={check.label} className={`arithmetic-check${check.ok ? " arithmetic-check--ok" : " arithmetic-check--fail"}`}>
+            <span>{check.label}</span>
+            <span>{check.actual} {check.ok ? "✓" : `(expected ~${check.expected})`}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function canBulkVerifyAll(result: ExtractionResult): boolean {
   const hasDisagreements = (result.disagreements?.length ?? 0) > 0;
   const hasMissing = (result.missingFields?.length ?? 0) > 0;
@@ -202,6 +245,9 @@ interface ExtractionResultViewProps {
   onVerifiedChange?: (verified: Record<string, boolean>) => void;
   clientName?: string;
   onClientNameChange?: (name: string) => void;
+  preparerName?: string;
+  onPreparerChange?: (name: string) => void;
+  onExportComplete?: (exportedAt: string) => void;
 }
 
 export function ExtractionResultView({
@@ -213,6 +259,9 @@ export function ExtractionResultView({
   onVerifiedChange,
   clientName,
   onClientNameChange,
+  preparerName: preparerNameProp,
+  onPreparerChange,
+  onExportComplete,
 }: ExtractionResultViewProps) {
   const { documentType, taxYear, payer, recipient, fields } = result;
   const labels = partyLabels(documentType);
@@ -222,10 +271,12 @@ export function ExtractionResultView({
   const [selectedSource, setSelectedSource] = useState<string | undefined>();
   const [exportPreset, setExportPreset] = useState<ExportPreset>("row");
   const [exportOverride, setExportOverride] = useState(false);
-  const [preparerName, setPreparerName] = useState("");
+  const [showExportConfirm, setShowExportConfirm] = useState(false);
+  const [localPreparerName, setLocalPreparerName] = useState("");
 
   const edits = editsProp ?? localEdits;
   const verified = verifiedProp ?? localVerified;
+  const preparerName = preparerNameProp ?? localPreparerName;
 
   const setEdit = (key: string, value: string) => {
     const next = { ...edits };
@@ -247,12 +298,17 @@ export function ExtractionResultView({
   }, [result.disagreements]);
 
   const mergedJson = useMemo(() => JSON.stringify(applyEditsToResult(result, edits), null, 2), [result, edits]);
+  const arithmeticChecks = useMemo(() => w2ArithmeticChecks(result, edits), [result, edits]);
 
-  const reviewComplete = allFieldsVerified(result, verified);
+  const reviewComplete = allFieldsVerified(result, edits, verified);
   const reviewTotal = reviewKeysForResult(result).length;
   const reviewDone = verifiedCount(result, verified);
   const lowConfidenceRemaining = unverifiedLowConfidenceCount(result, verified);
   const bulkVerifyAllowed = canBulkVerifyAll(result);
+  const pendingExportIssues = useMemo(
+    () => unverifiedFieldLabels(result, edits, verified),
+    [result, edits, verified]
+  );
 
   const maskedSsn = recipient.ssn_last4 === "APPLIED FOR"
     ? "Applied For"
@@ -260,37 +316,73 @@ export function ExtractionResultView({
     ? `••• ••-${recipient.ssn_last4}`
     : "";
 
-  const buildSignOff = (): ExportSignOff | undefined => {
-    const name = preparerName.trim();
-    if (!name) return undefined;
-    return {
-      preparerName: name,
-      exportedAt: new Date().toISOString(),
-      extractionMethod: result.extractionMethod,
-    };
-  };
-
-  const exportContext = { edits, verified, signOff: buildSignOff() };
-
   const handleExport = async () => {
     if (!reviewComplete && !exportOverride) return;
 
+    const exportedAt = new Date().toISOString();
+    const signOff = buildSignOff(exportedAt);
+    const ctx = { edits, verified, signOff };
+
     switch (exportPreset) {
       case "vertical":
-        downloadText(buildVerticalCsv(result, exportContext), exportFilename(result, ".csv"));
+        downloadText(buildVerticalCsv(result, ctx), exportFilename(result, ".csv"));
         break;
       case "row":
-        downloadText(buildRowCsv(result, exportContext), exportFilename(result, "_row.csv"));
+        downloadText(buildRowCsv(result, ctx), exportFilename(result, "_row.csv"));
         break;
       case "drake-w2":
-        downloadText(buildDrakeW2Csv(result, exportContext), exportFilename(result, "_drake_w2.csv"));
+        downloadText(buildDrakeW2Csv(result, ctx), exportFilename(result, "_drake_w2.csv"));
         break;
       case "copy-all":
-        await navigator.clipboard.writeText(buildCopyAllText(result, exportContext));
+        await navigator.clipboard.writeText(buildCopyAllText(result, ctx));
         break;
       default:
         break;
     }
+    onExportComplete?.(exportedAt);
+  };
+
+  const buildSignOff = (exportedAt: string): ExportSignOff | undefined => {
+    const name = preparerName.trim();
+    if (!name) return undefined;
+    return {
+      preparerName: name,
+      exportedAt,
+      extractionMethod: result.extractionMethod,
+    };
+  };
+
+  const requestExport = () => {
+    if (reviewComplete) {
+      handleExport();
+      return;
+    }
+    setShowExportConfirm(true);
+  };
+
+  const confirmUnverifiedExport = async () => {
+    setShowExportConfirm(false);
+    setExportOverride(true);
+    const exportedAt = new Date().toISOString();
+    const signOff = buildSignOff(exportedAt);
+    const ctx = { edits, verified, signOff };
+    switch (exportPreset) {
+      case "vertical":
+        downloadText(buildVerticalCsv(result, ctx), exportFilename(result, ".csv"));
+        break;
+      case "row":
+        downloadText(buildRowCsv(result, ctx), exportFilename(result, "_row.csv"));
+        break;
+      case "drake-w2":
+        downloadText(buildDrakeW2Csv(result, ctx), exportFilename(result, "_drake_w2.csv"));
+        break;
+      case "copy-all":
+        await navigator.clipboard.writeText(buildCopyAllText(result, ctx));
+        break;
+      default:
+        break;
+    }
+    onExportComplete?.(exportedAt);
   };
 
   const renderField = (field: TaxField) => {
@@ -342,6 +434,12 @@ export function ExtractionResultView({
             onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
           />
         </div>
+      )}
+
+      {result.formTypeWarning && <WarningBanner message={result.formTypeWarning} />}
+
+      {result.aiValidationFailed && (
+        <WarningBanner message="AI validation failed — showing pattern-matched values only. Verify every field manually." />
       )}
 
       {result.corrected && (
@@ -439,6 +537,7 @@ export function ExtractionResultView({
               {fields.length > 0 && (
                 <>
                   <SectionHeader label={labels.fieldsSection} />
+                  <W2ArithmeticPanel checks={arithmeticChecks} />
                   {fields.map(renderField)}
                 </>
               )}
@@ -473,7 +572,11 @@ export function ExtractionResultView({
           <input
             className="export-preparer-input"
             value={preparerName}
-            onChange={(e) => setPreparerName(e.target.value)}
+            onChange={(e) => {
+              const name = e.target.value;
+              if (onPreparerChange) onPreparerChange(name);
+              else setLocalPreparerName(name);
+            }}
             placeholder="Preparer name (export sign-off)"
             aria-label="Preparer name for export sign-off"
           />
@@ -495,24 +598,35 @@ export function ExtractionResultView({
           </select>
           <button
             className="download-csv-btn"
-            onClick={handleExport}
-            disabled={!reviewComplete && !exportOverride}
+            onClick={requestExport}
+            disabled={!reviewComplete && exportOverride}
             title={reviewComplete ? "Export reviewed data" : "Verify all fields before export"}
           >
             Export
           </button>
-          {!reviewComplete && (
+          {!reviewComplete && !exportOverride && (
             <button
               type="button"
               className="download-csv-btn download-csv-btn--override"
-              onClick={() => setExportOverride(true)}
+              onClick={() => setShowExportConfirm(true)}
             >
               Export anyway
             </button>
           )}
+          {exportOverride && !reviewComplete && (
+            <span className="extraction-result__export-override-badge">Unverified export enabled</span>
+          )}
         </div>
         <ExtractionBadge result={result} />
       </div>
+
+      {showExportConfirm && (
+        <ExportConfirmDialog
+          fields={pendingExportIssues}
+          onConfirm={confirmUnverifiedExport}
+          onCancel={() => setShowExportConfirm(false)}
+        />
+      )}
     </div>
   );
 }

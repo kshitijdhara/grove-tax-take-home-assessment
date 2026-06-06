@@ -19,7 +19,7 @@ function relativeTime(ts: number): string {
 function HistoryModal({ entry, onClose, onUpdateEntry }: {
   entry: HistoryEntry;
   onClose: () => void;
-  onUpdateEntry: (id: string, patch: Partial<Pick<HistoryEntry, "edits" | "verified" | "clientName">>) => void;
+  onUpdateEntry: (id: string, patch: Partial<Pick<HistoryEntry, "edits" | "verified" | "clientName" | "preparerName" | "lastExportedAt">>) => void;
 }) {
   const [pdfFile, setPdfFile] = useState<File | null>(null);
 
@@ -45,6 +45,9 @@ function HistoryModal({ entry, onClose, onUpdateEntry }: {
           onVerifiedChange={(verified) => onUpdateEntry(entry.id, { verified })}
           clientName={entry.clientName}
           onClientNameChange={(clientName) => onUpdateEntry(entry.id, { clientName })}
+          preparerName={entry.preparerName}
+          onPreparerChange={(preparerName) => onUpdateEntry(entry.id, { preparerName })}
+          onExportComplete={(lastExportedAt) => onUpdateEntry(entry.id, { lastExportedAt })}
         />
       </div>
     </div>
@@ -54,11 +57,12 @@ function HistoryModal({ entry, onClose, onUpdateEntry }: {
 interface HistoryPanelProps {
   entries: HistoryEntry[];
   onClear: () => void;
-  onUpdateEntry: (id: string, patch: Partial<Pick<HistoryEntry, "edits" | "verified" | "clientName">>) => void;
+  onUpdateEntry: (id: string, patch: Partial<Pick<HistoryEntry, "edits" | "verified" | "clientName" | "preparerName" | "lastExportedAt">>) => void;
   onSelectEntry?: (id: string) => void;
+  onRemoveEntry?: (id: string) => void;
 }
 
-export function HistoryPanel({ entries, onClear, onUpdateEntry, onSelectEntry }: HistoryPanelProps) {
+export function HistoryPanel({ entries, onClear, onUpdateEntry, onSelectEntry, onRemoveEntry }: HistoryPanelProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (entries.length === 0) return null;
@@ -90,24 +94,38 @@ export function HistoryPanel({ entries, onClear, onUpdateEntry, onSelectEntry }:
             const primaryLabel = entry.clientName || entry.result.payer.name || entry.filename;
             return (
               <li key={entry.id}>
-                <button className="history-card" onClick={() => openEntry(entry.id)}>
-                  <span className="history-card__badge">{entry.result.documentType}</span>
-                  <div className="history-card__meta">
-                    <span className="history-card__payer">{primaryLabel}</span>
-                    <span className="history-card__detail">
-                      {entry.result.taxYear && <span>{entry.result.taxYear}</span>}
-                      <span className="history-card__dot">·</span>
-                      <span>{relativeTime(entry.timestamp)}</span>
-                      {editCount > 0 && (
-                        <>
-                          <span className="history-card__dot">·</span>
-                          <span className="history-card__edited">{editCount} edited</span>
-                        </>
-                      )}
-                    </span>
-                  </div>
-                  <span className="history-card__chevron">›</span>
-                </button>
+                <div className="history-card-row">
+                  <button className="history-card" onClick={() => openEntry(entry.id)}>
+                    <span className="history-card__badge">{entry.result.documentType}</span>
+                    <div className="history-card__meta">
+                      <span className="history-card__payer">{primaryLabel}</span>
+                      <span className="history-card__detail">
+                        {entry.result.taxYear && <span>{entry.result.taxYear}</span>}
+                        <span className="history-card__dot">·</span>
+                        <span>{relativeTime(entry.timestamp)}</span>
+                        {editCount > 0 && (
+                          <>
+                            <span className="history-card__dot">·</span>
+                            <span className="history-card__edited">{editCount} edited</span>
+                          </>
+                        )}
+                      </span>
+                    </div>
+                    <span className="history-card__chevron">›</span>
+                  </button>
+                  {onRemoveEntry && (
+                    <button
+                      type="button"
+                      className="history-card__remove"
+                      aria-label={`Remove ${primaryLabel}`}
+                      onClick={() => {
+                        if (window.confirm(`Remove ${primaryLabel} from history?`)) onRemoveEntry(entry.id);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </li>
             );
           })}
