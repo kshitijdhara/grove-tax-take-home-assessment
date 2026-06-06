@@ -98,7 +98,11 @@ export function ExtractionResultView({ result }: ExtractionResultViewProps) {
   const { documentType, taxYear, payer, recipient, fields, extractionMethod } = result;
   const [view, setView] = useState<ViewMode>("fields");
 
-  const maskedSsn = recipient.ssn_last4 ? `••• ••-${recipient.ssn_last4}` : "";
+  const maskedSsn = recipient.ssn_last4 === "APPLIED FOR"
+    ? "Applied For"
+    : recipient.ssn_last4
+    ? `••• ••-${recipient.ssn_last4}`
+    : "";
 
   return (
     <div className="extraction-result">

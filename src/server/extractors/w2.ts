@@ -194,15 +194,16 @@ export function extractW2(text: string): RegexExtractionResult {
   const recipientAddress = recipientAddressRaw ? recipientAddressRaw.split(/\t/)[0]?.trim() ?? null : null;
 
   // --- SSN last 4 ---
+  // "APPLIED FOR" is a valid W-2 state when the employee hasn't been issued an SSN yet.
+  const ssnAppliedFor = /\bapplied\s+for\b/i.test(text);
   const recipientSsn4 =
     findText(
       text,
       /employee[''s]*\s+(?:ssn|social\s+security)[^a-z\d]*(?:xxx|[•●*]+)[^a-z\d]*(\d{4})/i,
       /\b(?:xxx|[•●*]+)[- ]?(?:xx|[•●*]+)[- ]?(\d{4})\b/i,
       /\b\d{3}-\d{2}-(\d{4})\b/,
-      // ADP sometimes masks as "000-00-NNNN"
       /\b0{3}-0{2}-(\d{4})\b/
-    ) ?? "";
+    ) ?? (ssnAppliedFor ? "APPLIED FOR" : "");
 
   // --- Wages (Box 1) ---
   // Strategy order: reversed-layout marker → space-separated format → IRS label → box number
@@ -336,14 +337,13 @@ export function extractW2(text: string): RegexExtractionResult {
   );
 
   // --- Local wages (Box 18) ---
-  // findAmountBeforeLabel is intentionally omitted here — the 200-char lookback window
-  // reaches back to Box 1 wages on multi-section layouts, causing a false match.
-  const localWages = findMoney(
-    text,
-    new RegExp(`[Ll]ocal\\s+[Ww]ages[,\\s]+[Tt]ips[^\\d]{0,40}${MONEY}`),
-    new RegExp(`[Ll]ocal\\s+[Ww]ages[^\\d]{0,40}${MONEY}`),
-    new RegExp(`18\\s+local\\s+wages[^\\d]{0,80}${MONEY}`, "i")
-  );
+  // The "Local Wages," text pattern is intentionally omitted — it matches the ADP earnings
+  // summary at the top of the document (gross local wages), not the W-2 box value.
+  // findAmountBeforeLabel with 500-char lookback correctly finds the last decimal amount
+  // before "Box 18 of W-2", which is the actual box value (~400 chars before the label).
+  const localWages =
+    findAmountBeforeLabel(text, /Box\s+18\s+of\s+W-?2/i, 500) ??
+    findMoney(text, new RegExp(`18\\s+local\\s+wages[^\\d]{0,80}${MONEY}`, "i"));
 
   // --- Local income tax (Box 19) & Locality name/code (Box 20) ---
   // PSD codes (6-digit locality codes) appear in Pennsylvania W-2s from multiple processors.
@@ -360,6 +360,15 @@ export function extractW2(text: string): RegexExtractionResult {
     const part2 = psdMatch[3]?.trim() ?? "";
     localityName = part2 ? `${part1}${part2}` : part1 || null;
     localTax = psdMatch[4] ?? null;
+
+    // ADP abbreviates city names in the PSD line (e.g. "PITTS" for Pittsburgh).
+    // The full name often appears in the address section: "700102\nPITTSBURGH PA 15217".
+    if (localityCode && localityName && localityName.replace(/\s/g, "").length <= 8) {
+      const fullCity = text.match(
+        new RegExp(`\\b${localityCode}\\n([A-Z][A-Z ]+[A-Z])\\s+[A-Z]{2}\\s+\\d{5}`)
+      )?.[1]?.trim();
+      if (fullCity) localityName = fullCity;
+    }
   }
 
   if (!localTax) {
